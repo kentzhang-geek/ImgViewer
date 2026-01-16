@@ -1,0 +1,9 @@
+- command line arguments
+- log not output by default, unless -v or --verbose is specified
+- jpeg support
+- plot view zoom, crossline, bound selection
+- color them using tokyo night theme
+- min/max in plot view should at a same line
+- view zoom slider maybe not needed, use mouse wheel instead
+- load from clipboard twice a same image will leads to bug
+- check hdr, ktx, and other formats supported by renderdoc
