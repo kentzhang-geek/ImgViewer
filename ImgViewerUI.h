@@ -113,6 +113,7 @@ private:
   float m_crosslineColor[4] = {1.0f, 1.0f, 0.0f,
                                0.5f}; // Default Yellow, semi-transparent
   bool m_layoutInitialized = false;
+  bool m_resetLayout = false;
 
   void RenderConfigPanel();
   void ApplyDefaultLayout(ImGuiID dockspaceId);

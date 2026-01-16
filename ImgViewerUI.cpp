@@ -71,7 +71,18 @@ void ImgViewerUI::Render() {
   ImGui::Begin("DockSpaceWindow", nullptr, dockspaceFlags);
   ImGui::PopStyleVar(3);
 
+  ImGui::PopStyleVar(3);
+
   ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
+
+  // Handle Layout Reset Request
+  if (m_resetLayout) {
+    ImGui::DockBuilderRemoveNode(dockspaceId); // Clear existing layout
+    ApplyDefaultLayout(dockspaceId);           // Re-apply default
+    m_resetLayout = false;
+    m_layoutInitialized = true;
+  }
+
   ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
   // Initialize Default Layout if first run (node doesn't exist)
@@ -1187,7 +1198,10 @@ void ImgViewerUI::RenderConfigPanel() {
   if (!m_showConfigPanel)
     return;
 
-  if (ImGui::Begin("Configuration", &m_showConfigPanel)) {
+  // Make Config Panel non-dockable so it floats
+  if (ImGui::Begin("Configuration", &m_showConfigPanel,
+                   ImGuiWindowFlags_NoDocking |
+                       ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::Text("UI Settings");
     ImGui::Separator();
 
@@ -1200,7 +1214,7 @@ void ImgViewerUI::RenderConfigPanel() {
     ImGui::Separator();
     ImGui::Text("Layout");
     if (ImGui::Button("Reset to Default Layout")) {
-      ApplyDefaultLayout(ImGui::GetID("MainDockSpace"));
+      m_resetLayout = true;
     }
   }
   ImGui::End();

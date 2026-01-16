@@ -417,7 +417,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
   case WM_KEYDOWN: {
     switch (wParam) {
     case VK_ESCAPE:
-      PostQuitMessage(0);
+      exit(0);
       break;
     default:
       // wasd control position, up down left right control direction
