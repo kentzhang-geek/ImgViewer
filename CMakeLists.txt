@@ -1,14 +1,10 @@
 cmake_minimum_required(VERSION 3.23)
 
 project(ImgViewer LANGUAGES CXX RC)
+set(BINARY_NAME "imgViewer")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-if(MSVC)
-	# static build by default
-	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
-endif()
 
 # ---- 源码根目录（新增这一层）----
 set(SRC_ROOT "${CMAKE_SOURCE_DIR}")
@@ -65,7 +61,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/flatbuffers/include"
 	"../SDKs/boost/include/boost-1_89"
 	"../SDKs/stb"
-	"../SDKs/dxtex/include"
+	"../SDKs/dxtex_static/include"
 	"../SDKs/DirectXTex-oct2025/Common"
 )
 
@@ -73,7 +69,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/boost/lib"
 	"../SDKs/flatbuffers/lib"
-	"../SDKs/dxtex/lib"
+	"../SDKs/dxtex_static/lib"
 )
 
 # ---- link ----
@@ -87,6 +83,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	dwmapi.lib
 )
 
-if(MSVC)
-	target_compile_options(${PROJECT_NAME} PRIVATE /W3 /permissive-)
-endif()
+target_compile_options(${PROJECT_NAME} PRIVATE /W3 /permissive-)
+
+# ---- output ----
+set_target_properties(${PROJECT_NAME} PROPERTIES
+	OUTPUT_NAME ${BINARY_NAME}
+)
