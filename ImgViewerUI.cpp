@@ -81,8 +81,6 @@ void ImgViewerUI::Render() {
     m_layoutInitialized = true;
   }
 
-  ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
-
   // Initialize Default Layout if first run (node doesn't exist)
   if (!m_layoutInitialized) {
     if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr) {
@@ -90,6 +88,8 @@ void ImgViewerUI::Render() {
     }
     m_layoutInitialized = true;
   }
+
+  ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
   ImGui::End();
 
@@ -347,7 +347,8 @@ void ImgViewerUI::RenderImageView() {
     ImU32 crosshairColor =
         ImGui::GetColorU32(ImVec4(m_crosslineColor[0], m_crosslineColor[1],
                                   m_crosslineColor[2], m_crosslineColor[3]));
-    ImU32 boxColor = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
+    ImU32 boxColor = ImGui::GetColorU32(ImVec4(
+        m_crosslineColor[0], m_crosslineColor[1], m_crosslineColor[2], 1.0f));
 
     // Pixel top-left in screen coordinates
     // We use floor to snap strictly to grid visual
