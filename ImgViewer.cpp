@@ -1,19 +1,18 @@
-#include "ImageViewer.h"
+#include "ImgViewer.h"
 #include "pch.h"
 #include <algorithm>
 #include <cmath>
-
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #include <DirectXTex.h>
 
-ImageViewer::ImageViewer() {}
+ImgViewer::ImgViewer() {}
 
-ImageViewer::~ImageViewer() {}
+ImgViewer::~ImgViewer() {}
 
-bool ImageViewer::LoadImage(const std::string &filepath) {
+bool ImgViewer::LoadImage(const std::string &filepath) {
   Clear();
 
   // Determine file type by extension
@@ -39,7 +38,7 @@ bool ImageViewer::LoadImage(const std::string &filepath) {
   return success;
 }
 
-bool ImageViewer::LoadSTB(const std::string &filepath) {
+bool ImgViewer::LoadSTB(const std::string &filepath) {
   int width, height, channels;
 
   // First try to load as HDR
@@ -90,7 +89,7 @@ bool ImageViewer::LoadSTB(const std::string &filepath) {
   }
 }
 
-bool ImageViewer::LoadDDS(const std::string &filepath) {
+bool ImgViewer::LoadDDS(const std::string &filepath) {
   using namespace DirectX;
 
   std::wstring wfilepath(filepath.begin(), filepath.end());
@@ -176,7 +175,7 @@ bool ImageViewer::LoadDDS(const std::string &filepath) {
   return true;
 }
 
-void ImageViewer::AnalyzeImageRange() {
+void ImgViewer::AnalyzeImageRange() {
   if (m_imageData.pixels.empty())
     return;
 
@@ -200,7 +199,7 @@ void ImageViewer::AnalyzeImageRange() {
   m_imageData.maxValue = (maxVal == -FLT_MAX) ? 1.0f : maxVal;
 }
 
-bool ImageViewer::LoadImageFromClipboard() {
+bool ImgViewer::LoadImageFromClipboard() {
   Clear();
 
   if (!OpenClipboard(nullptr))
@@ -318,7 +317,7 @@ bool ImageViewer::LoadImageFromClipboard() {
   return success;
 }
 
-void ImageViewer::Clear() {
+void ImgViewer::Clear() {
   m_imageData = ImageData();
   m_zoom = 1.0f;
   m_pan = {0.0f, 0.0f};

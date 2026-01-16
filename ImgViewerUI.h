@@ -1,12 +1,12 @@
 #pragma once
 #include "DX12Renderer.h"
 #include "ImageRenderer.h"
-#include "ImageViewer.h"
+#include "ImgViewer.h"
 
-class ImageViewerUI {
+class ImgViewerUI {
 public:
-  ImageViewerUI();
-  ~ImageViewerUI();
+  ImgViewerUI();
+  ~ImgViewerUI();
 
   void Initialize(DX12Renderer *renderer);
   void Render();
@@ -19,10 +19,10 @@ public:
                    int screenHeight);
   void HandleDragDrop(const std::string &filepath);
 
-  ImageViewer &GetImageViewer() { return m_imageViewer; }
+  ImgViewer &GetImgViewer() { return m_imgViewer; }
 
 private:
-  ImageViewer m_imageViewer;
+  ImgViewer m_imgViewer;
   DX12Renderer *m_renderer;
   ImageRenderer m_imageRenderer;
 

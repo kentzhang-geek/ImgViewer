@@ -28,10 +28,10 @@ set(PROJECT_SOURCES
 	${SRC_ROOT}/main.cpp
 	${SRC_ROOT}/DX12Renderer.cpp
 	${SRC_ROOT}/DX12Renderer.h
-	${SRC_ROOT}/ImageViewer.cpp
-	${SRC_ROOT}/ImageViewer.h
-	${SRC_ROOT}/ImageViewerUI.cpp
-	${SRC_ROOT}/ImageViewerUI.h
+	${SRC_ROOT}/ImgViewer.cpp
+	${SRC_ROOT}/ImgViewer.h
+	${SRC_ROOT}/ImgViewerUI.cpp
+	${SRC_ROOT}/ImgViewerUI.h
 	${SRC_ROOT}/ImageRenderer.cpp
 	${SRC_ROOT}/ImageRenderer.h
 )
@@ -61,7 +61,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/flatbuffers/include"
 	"../SDKs/boost/include/boost-1_89"
 	"../SDKs/stb"
-	"../SDKs/dxtex_static/include"
+	"../SDKs/dxtex/include"
 	"../SDKs/DirectXTex-oct2025/Common"
 )
 
@@ -69,7 +69,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/boost/lib"
 	"../SDKs/flatbuffers/lib"
-	"../SDKs/dxtex_static/lib"
+	"../SDKs/dxtex/lib"
 )
 
 # ---- link ----

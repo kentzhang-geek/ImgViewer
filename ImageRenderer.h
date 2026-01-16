@@ -1,7 +1,6 @@
 #pragma once
-#include "ImageViewer.h"
+#include "ImgViewer.h"
 #include "pch.h"
-
 
 using namespace Microsoft::WRL;
 

@@ -1,5 +1,5 @@
 #include "DX12Renderer.h"
-#include "ImageViewerUI.h"
+#include "ImgViewerUI.h"
 #include "Logger.h"
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -20,7 +20,7 @@ HINSTANCE hInst; // 当前实例
 
 // DX12 Renderer
 DX12Renderer *g_pRenderer = nullptr;
-ImageViewerUI *g_pViewerUI = nullptr;
+ImgViewerUI *g_pViewerUI = nullptr;
 
 // Borderless Window Config
 const int g_ResizeBorderWidth = 8;
@@ -39,7 +39,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
   // Initialize logger
   Logger::Get().Init("log.txt");
-  LOG("=== ImageViewer Starting ===");
+  LOG("=== ImgViewer Starting ===");
 
   // Enable DPI awareness for proper mouse coordinates with Windows scaling
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -139,7 +139,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     g_pRenderer = nullptr;
   }
 
-  LOG("=== ImageViewer Shutdown Complete ===");
+  LOG("=== ImgViewer Shutdown Complete ===");
   Logger::Get().Close();
 
   return (int)msg.wParam;
@@ -207,7 +207,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
   // for standard behavior logic internally often standard WS_OVERLAPPEDWINDOW
   // is fine if we handle WM_NCCALCSIZE to remove it visually Let's use
   // WS_OVERLAPPEDWINDOW but we will strip the client area via WM_NCCALCSIZE
-  HWND hWnd = CreateWindowExW(0, WINDOW_NAME, L"ImageViewer",
+  HWND hWnd = CreateWindowExW(0, WINDOW_NAME, L"ImgViewer",
                               WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
                               CW_USEDEFAULT, nDefaultWidth, nDefaultHeight,
                               nullptr, nullptr, hInstance, nullptr);
@@ -286,10 +286,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
   ImGui_ImplDX12_Init(&initInfo);
   LOG("ImGui initialized successfully");
 
-  // Initialize ImageViewerUI
-  g_pViewerUI = new ImageViewerUI();
+  // Initialize ImgViewerUI
+  g_pViewerUI = new ImgViewerUI();
   g_pViewerUI->Initialize(g_pRenderer);
-  LOG("ImageViewerUI initialized successfully");
+  LOG("ImgViewerUI initialized successfully");
 
   // Enable drag and drop
   DragAcceptFiles(hWnd, TRUE);

@@ -1,39 +1,38 @@
-#include "ImageViewerUI.h"
+#include "ImgViewerUI.h"
 #include "Logger.h"
 #include "imgui.h"
 #include "pch.h"
 #include <algorithm>
 #include <commdlg.h>
 
-ImageViewerUI::ImageViewerUI() : m_renderer(nullptr) {
+ImgViewerUI::ImgViewerUI() : m_renderer(nullptr) {
   m_histogramR.resize(m_histogramBins, 0);
   m_histogramG.resize(m_histogramBins, 0);
   m_histogramB.resize(m_histogramBins, 0);
 }
 
-ImageViewerUI::~ImageViewerUI() {}
+ImgViewerUI::~ImgViewerUI() {}
 
-void ImageViewerUI::Initialize(DX12Renderer *renderer) {
-  LOG("ImageViewerUI::Initialize - renderer=%p", renderer);
+void ImgViewerUI::Initialize(DX12Renderer *renderer) {
+  LOG("ImgViewerUI::Initialize - renderer=%p", renderer);
   m_renderer = renderer;
 
   // Initialize image renderer
   UINT srvDescSize = renderer->GetDevice()->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-  LOG("ImageViewerUI::Initialize - SRV descriptor size=%u", srvDescSize);
+  LOG("ImgViewerUI::Initialize - SRV descriptor size=%u", srvDescSize);
 
   if (!m_imageRenderer.Initialize(renderer->GetDevice(), renderer->GetSrvHeap(),
                                   srvDescSize)) {
-    LOG_ERROR(
-        "ImageViewerUI::Initialize - Failed to initialize ImageRenderer!");
+    LOG_ERROR("ImgViewerUI::Initialize - Failed to initialize ImageRenderer!");
   } else {
-    LOG("ImageViewerUI::Initialize - ImageRenderer initialized successfully");
+    LOG("ImgViewerUI::Initialize - ImageRenderer initialized successfully");
   }
 
   SetupImGuiStyle();
 }
 
-void ImageViewerUI::Render() {
+void ImgViewerUI::Render() {
   ImGuiIO &io = ImGui::GetIO();
 
   // Render Custom Title Bar (includes Menu Bar)
@@ -106,10 +105,10 @@ void ImageViewerUI::Render() {
       1.0f); // 1px thickness
 }
 
-void ImageViewerUI::RenderMainPanel() {
-  const auto &imgData = m_imageViewer.GetImageData();
+void ImgViewerUI::RenderMainPanel() {
+  const auto &imgData = m_imgViewer.GetImageData();
 
-  if (!m_imageViewer.HasImage()) {
+  if (!m_imgViewer.HasImage()) {
     ImGui::Text("Drag and drop an image file here");
     ImGui::Text("or use File > Paste from Clipboard");
     return;
@@ -130,13 +129,13 @@ void ImageViewerUI::RenderMainPanel() {
   ImGui::EndChild();
 }
 
-void ImageViewerUI::RenderInfoPanel() {
-  const auto &imgData = m_imageViewer.GetImageData();
+void ImgViewerUI::RenderInfoPanel() {
+  const auto &imgData = m_imgViewer.GetImageData();
 
   ImGui::Text("Image Information");
   ImGui::Separator();
 
-  if (!m_imageViewer.HasImage()) {
+  if (!m_imgViewer.HasImage()) {
     ImGui::Text("No image loaded");
     return;
   }
@@ -157,14 +156,14 @@ void ImageViewerUI::RenderInfoPanel() {
 
   ImGui::Separator();
   ImGui::Text("View Controls:");
-  float zoom = m_imageViewer.GetZoom();
+  float zoom = m_imgViewer.GetZoom();
   if (ImGui::SliderFloat("Zoom", &zoom, 0.1f, 10.0f)) {
-    m_imageViewer.SetZoom(zoom);
+    m_imgViewer.SetZoom(zoom);
   }
 
   if (ImGui::Button("Reset View")) {
-    m_imageViewer.SetZoom(1.0f);
-    m_imageViewer.SetPan({0.0f, 0.0f});
+    m_imgViewer.SetZoom(1.0f);
+    m_imgViewer.SetPan({0.0f, 0.0f});
   }
 
   // Pixel info on hover
@@ -202,8 +201,7 @@ void ImageViewerUI::RenderInfoPanel() {
 }
 
 // New method: Renders the image content into the intermediate texture
-void ImageViewerUI::RenderImageToTexture(
-    ID3D12GraphicsCommandList *commandList) {
+void ImgViewerUI::RenderImageToTexture(ID3D12GraphicsCommandList *commandList) {
   if (!m_imageRenderer.HasTexture() || !m_renderer)
     return;
 
@@ -229,16 +227,16 @@ void ImageViewerUI::RenderImageToTexture(
                                        m_imageViewWidth, m_imageViewHeight);
   }
 
-  float zoom = m_imageViewer.GetZoom();
-  auto pan = m_imageViewer.GetPan();
-  float rangeMin = m_imageViewer.GetRangeMin();
-  float rangeMax = m_imageViewer.GetRangeMax();
+  float zoom = m_imgViewer.GetZoom();
+  auto pan = m_imgViewer.GetPan();
+  float rangeMin = m_imgViewer.GetRangeMin();
+  float rangeMax = m_imgViewer.GetRangeMax();
 
   m_imageRenderer.RenderToTexture(commandList, zoom, pan, rangeMin, rangeMax,
                                   m_showR, m_showG, m_showB);
 }
 
-void ImageViewerUI::RenderImageView() {
+void ImgViewerUI::RenderImageView() {
   ImVec2 canvasPos = ImGui::GetCursorScreenPos();
   ImVec2 canvasSize = ImGui::GetContentRegionAvail();
 
@@ -251,7 +249,7 @@ void ImageViewerUI::RenderImageView() {
   m_imageViewWidth = (int)canvasSize.x;
   m_imageViewHeight = (int)canvasSize.y;
 
-  if (!m_imageViewer.HasImage()) {
+  if (!m_imgViewer.HasImage()) {
     // Draw background
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(
@@ -299,10 +297,10 @@ void ImageViewerUI::RenderImageView() {
   // Draw crosshair overlay using ImGui (ON TOP of the image)
   // Since we just drew the image using ImGui::Image, any subsequent draw calls
   // (like AddLine) will be on top of it in the draw list.
-  const auto &imgData = m_imageViewer.GetImageData();
+  const auto &imgData = m_imgViewer.GetImageData();
   if (m_hoveredPixel.x >= 0) {
-    float zoom = m_imageViewer.GetZoom();
-    auto pan = m_imageViewer.GetPan();
+    float zoom = m_imgViewer.GetZoom();
+    auto pan = m_imgViewer.GetPan();
 
     int imgWidth = m_imageRenderer.GetImageWidth();
     int imgHeight = m_imageRenderer.GetImageHeight();
@@ -362,20 +360,20 @@ void ImageViewerUI::RenderImageView() {
 
 static int s_renderImageCallCount = 0;
 
-void ImageViewerUI::RenderImage(ID3D12GraphicsCommandList *commandList,
-                                int screenWidth, int screenHeight) {
+void ImgViewerUI::RenderImage(ID3D12GraphicsCommandList *commandList,
+                              int screenWidth, int screenHeight) {
   s_renderImageCallCount++;
   bool shouldLog = (s_renderImageCallCount <= 5);
 
   if (shouldLog) {
-    LOG("ImageViewerUI::RenderImage[%d] - m_needsImageRender=%d, HasTexture=%d",
+    LOG("ImgViewerUI::RenderImage[%d] - m_needsImageRender=%d, HasTexture=%d",
         s_renderImageCallCount, m_needsImageRender ? 1 : 0,
         m_imageRenderer.HasTexture() ? 1 : 0);
   }
 
   if (!m_needsImageRender || !m_imageRenderer.HasTexture()) {
     if (shouldLog) {
-      LOG("ImageViewerUI::RenderImage[%d] - Skipping: m_needsImageRender=%d, "
+      LOG("ImgViewerUI::RenderImage[%d] - Skipping: m_needsImageRender=%d, "
           "HasTexture=%d",
           s_renderImageCallCount, m_needsImageRender ? 1 : 0,
           m_imageRenderer.HasTexture() ? 1 : 0);
@@ -383,13 +381,13 @@ void ImageViewerUI::RenderImage(ID3D12GraphicsCommandList *commandList,
     return;
   }
 
-  float zoom = m_imageViewer.GetZoom();
-  auto pan = m_imageViewer.GetPan();
-  float rangeMin = m_imageViewer.GetRangeMin();
-  float rangeMax = m_imageViewer.GetRangeMax();
+  float zoom = m_imgViewer.GetZoom();
+  auto pan = m_imgViewer.GetPan();
+  float rangeMin = m_imgViewer.GetRangeMin();
+  float rangeMax = m_imgViewer.GetRangeMax();
 
   if (shouldLog) {
-    LOG("ImageViewerUI::RenderImage[%d] - Calling ImageRenderer::Render with "
+    LOG("ImgViewerUI::RenderImage[%d] - Calling ImageRenderer::Render with "
         "viewport (%d,%d,%d,%d)",
         s_renderImageCallCount, m_imageViewX, m_imageViewY, m_imageViewWidth,
         m_imageViewHeight);
@@ -401,9 +399,9 @@ void ImageViewerUI::RenderImage(ID3D12GraphicsCommandList *commandList,
                          screenHeight);
 }
 
-void ImageViewerUI::HandleImageInteraction() {
-  const auto &imgData = m_imageViewer.GetImageData();
-  if (!m_imageViewer.HasImage())
+void ImgViewerUI::HandleImageInteraction() {
+  const auto &imgData = m_imgViewer.GetImageData();
+  if (!m_imgViewer.HasImage())
     return;
 
   ImGuiIO &io = ImGui::GetIO();
@@ -412,7 +410,7 @@ void ImageViewerUI::HandleImageInteraction() {
   if (isHovered) {
     // Zoom with mouse wheel
     if (io.MouseWheel != 0.0f) {
-      float oldZoom = m_imageViewer.GetZoom();
+      float oldZoom = m_imgViewer.GetZoom();
       float zoomFactor = (1.0f + io.MouseWheel * 0.1f);
       float newZoom = oldZoom * zoomFactor;
 
@@ -436,7 +434,7 @@ void ImageViewerUI::HandleImageInteraction() {
         // NewZoom NewPan = (Mouse - Center) - (Mouse - Center - OldPan) * Ratio
         // NewPan = OldPan * Ratio + RelMouse * (1 - Ratio)
 
-        auto oldPan = m_imageViewer.GetPan();
+        auto oldPan = m_imgViewer.GetPan();
 
         // Calculate Mouse Relative to Center of Viewport
         // We need the ACTUAL viewport center, which is (m_imageViewWidth/2,
@@ -454,8 +452,8 @@ void ImageViewerUI::HandleImageInteraction() {
         float newPanX = oldPan.x * ratio + relMouseX * (1.0f - ratio);
         float newPanY = oldPan.y * ratio + relMouseY * (1.0f - ratio);
 
-        m_imageViewer.SetZoom(newZoom);
-        m_imageViewer.SetPan({newPanX, newPanY});
+        m_imgViewer.SetZoom(newZoom);
+        m_imgViewer.SetPan({newPanX, newPanY});
       }
     }
 
@@ -465,10 +463,10 @@ void ImageViewerUI::HandleImageInteraction() {
         m_isPanning = true;
         m_lastMousePos = {io.MousePos.x, io.MousePos.y};
       } else {
-        auto pan = m_imageViewer.GetPan();
+        auto pan = m_imgViewer.GetPan();
         pan.x += io.MousePos.x - m_lastMousePos.x;
         pan.y += io.MousePos.y - m_lastMousePos.y;
-        m_imageViewer.SetPan(pan);
+        m_imgViewer.SetPan(pan);
         m_lastMousePos = {io.MousePos.x, io.MousePos.y};
       }
     } else {
@@ -478,8 +476,8 @@ void ImageViewerUI::HandleImageInteraction() {
     // Calculate hovered pixel using the same viewport coordinates as rendering
     // Use m_imageViewX/Y/Width/Height which are the actual DX12 rendering
     // viewport
-    float zoom = m_imageViewer.GetZoom();
-    auto pan = m_imageViewer.GetPan();
+    float zoom = m_imgViewer.GetZoom();
+    auto pan = m_imgViewer.GetPan();
 
     int imgWidth = m_imageRenderer.GetImageWidth();
     int imgHeight = m_imageRenderer.GetImageHeight();
@@ -521,9 +519,9 @@ void ImageViewerUI::HandleImageInteraction() {
   }
 }
 
-void ImageViewerUI::RenderRangeControls() {
-  float rangeMin = m_imageViewer.GetRangeMin();
-  float rangeMax = m_imageViewer.GetRangeMax();
+void ImgViewerUI::RenderRangeControls() {
+  float rangeMin = m_imgViewer.GetRangeMin();
+  float rangeMax = m_imgViewer.GetRangeMax();
 
   ImGui::Text("Plot Value Range");
 
@@ -532,19 +530,19 @@ void ImageViewerUI::RenderRangeControls() {
   changed |= ImGui::DragFloat("Max", &rangeMax, 0.01f);
 
   if (changed) {
-    m_imageViewer.SetRange(rangeMin, rangeMax);
+    m_imgViewer.SetRange(rangeMin, rangeMax);
     UpdateHistogram(); // Update histogram when range changes
   }
 
   if (ImGui::Button("Auto Range")) {
-    const auto &imgData = m_imageViewer.GetImageData();
+    const auto &imgData = m_imgViewer.GetImageData();
 
     // If all channels are selected, use the pre-calculated global min/max
     if (m_showR && m_showG && m_showB) {
-      m_imageViewer.SetRange(imgData.minValue, imgData.maxValue);
+      m_imgViewer.SetRange(imgData.minValue, imgData.maxValue);
     } else if (!m_showR && !m_showG && !m_showB) {
       // No channels selected, do nothing or reset to 0-1
-      m_imageViewer.SetRange(0.0f, 1.0f);
+      m_imgViewer.SetRange(0.0f, 1.0f);
     } else {
       // Calculate min/max for selected channels
       float minVal = FLT_MAX;
@@ -579,7 +577,7 @@ void ImageViewerUI::RenderRangeControls() {
       }
 
       if (minVal <= maxVal) {
-        m_imageViewer.SetRange(minVal, maxVal);
+        m_imgViewer.SetRange(minVal, maxVal);
       }
     }
 
@@ -588,7 +586,7 @@ void ImageViewerUI::RenderRangeControls() {
 
   ImGui::SameLine();
   if (ImGui::Button("0-1 Range")) {
-    m_imageViewer.SetRange(0.0f, 1.0f);
+    m_imgViewer.SetRange(0.0f, 1.0f);
     UpdateHistogram(); // Update histogram when range changes
   }
 
@@ -601,7 +599,7 @@ void ImageViewerUI::RenderRangeControls() {
   ImGui::Checkbox("B", &m_showB);
 }
 
-void ImageViewerUI::RenderHistogram() {
+void ImgViewerUI::RenderHistogram() {
   // Legend
   ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "R");
   ImGui::SameLine();
@@ -681,9 +679,9 @@ void ImageViewerUI::RenderHistogram() {
   ImGui::EndChild();
 }
 
-void ImageViewerUI::RenderMagnifier() {
-  const auto &imgData = m_imageViewer.GetImageData();
-  if (!m_imageViewer.HasImage())
+void ImgViewerUI::RenderMagnifier() {
+  const auto &imgData = m_imgViewer.GetImageData();
+  if (!m_imgViewer.HasImage())
     return;
 
   int magnifySize = 13;    // 13x13 pixels
@@ -777,9 +775,9 @@ void ImageViewerUI::RenderMagnifier() {
   }
 }
 
-void ImageViewerUI::UpdateHistogram() {
-  const auto &imgData = m_imageViewer.GetImageData();
-  if (!m_imageViewer.HasImage())
+void ImgViewerUI::UpdateHistogram() {
+  const auto &imgData = m_imgViewer.GetImageData();
+  if (!m_imgViewer.HasImage())
     return;
 
   // Clear histograms
@@ -787,8 +785,8 @@ void ImageViewerUI::UpdateHistogram() {
   std::fill(m_histogramG.begin(), m_histogramG.end(), 0);
   std::fill(m_histogramB.begin(), m_histogramB.end(), 0);
 
-  float rangeMin = m_imageViewer.GetRangeMin();
-  float rangeMax = m_imageViewer.GetRangeMax();
+  float rangeMin = m_imgViewer.GetRangeMin();
+  float rangeMax = m_imgViewer.GetRangeMax();
   float rangeSize = rangeMax - rangeMin;
 
   if (rangeSize <= 0.0f)
@@ -818,45 +816,45 @@ void ImageViewerUI::UpdateHistogram() {
   }
 }
 
-void ImageViewerUI::HandleDragDrop(const std::string &filepath) {
-  LOG("ImageViewerUI::HandleDragDrop - filepath=%s", filepath.c_str());
+void ImgViewerUI::HandleDragDrop(const std::string &filepath) {
+  LOG("ImgViewerUI::HandleDragDrop - filepath=%s", filepath.c_str());
 
   // Clear existing texture before loading new one
   if (m_imageRenderer.HasTexture()) {
     m_imageRenderer.ClearTexture();
   }
 
-  if (m_imageViewer.LoadImage(filepath)) {
-    LOG("ImageViewerUI::HandleDragDrop - Image loaded successfully");
-    const auto &imgData = m_imageViewer.GetImageData();
-    LOG("ImageViewerUI::HandleDragDrop - Image size: %dx%d, pixels.size=%zu",
+  if (m_imgViewer.LoadImage(filepath)) {
+    LOG("ImgViewerUI::HandleDragDrop - Image loaded successfully");
+    const auto &imgData = m_imgViewer.GetImageData();
+    LOG("ImgViewerUI::HandleDragDrop - Image size: %dx%d, pixels.size=%zu",
         imgData.width, imgData.height, imgData.pixels.size());
 
     UpdateHistogram();
-    LOG("ImageViewerUI::HandleDragDrop - Histogram updated");
+    LOG("ImgViewerUI::HandleDragDrop - Histogram updated");
 
     // Upload image to GPU
-    LOG("ImageViewerUI::HandleDragDrop - Starting GPU upload...");
+    LOG("ImgViewerUI::HandleDragDrop - Starting GPU upload...");
     m_renderer->BeginRender();
     bool uploadResult = m_imageRenderer.UploadImage(
         m_renderer->GetDevice(), m_renderer->GetCommandList(),
-        m_imageViewer.GetImageData());
+        m_imgViewer.GetImageData());
     m_renderer->EndRender();
 
     if (uploadResult) {
-      LOG("ImageViewerUI::HandleDragDrop - GPU upload successful! "
+      LOG("ImgViewerUI::HandleDragDrop - GPU upload successful! "
           "HasTexture=%d",
           m_imageRenderer.HasTexture() ? 1 : 0);
     } else {
-      LOG_ERROR("ImageViewerUI::HandleDragDrop - GPU upload FAILED!");
+      LOG_ERROR("ImgViewerUI::HandleDragDrop - GPU upload FAILED!");
     }
   } else {
-    LOG_ERROR("ImageViewerUI::HandleDragDrop - Failed to load image: %s",
+    LOG_ERROR("ImgViewerUI::HandleDragDrop - Failed to load image: %s",
               filepath.c_str());
   }
 }
 
-void ImageViewerUI::SetupImGuiStyle() {
+void ImgViewerUI::SetupImGuiStyle() {
   ImGuiStyle &style = ImGui::GetStyle();
 
   // Rounding
@@ -920,7 +918,7 @@ void ImageViewerUI::SetupImGuiStyle() {
   colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.52f, 1.00f);
 }
 
-void ImageViewerUI::RenderTitleBar() {
+void ImgViewerUI::RenderTitleBar() {
   ImGuiViewport *viewport = ImGui::GetMainViewport();
   float titleBarHeight = 32.0f;
 
@@ -1108,7 +1106,7 @@ void ImageViewerUI::RenderTitleBar() {
   ImGui::PopStyleVar(2);
 }
 
-void ImageViewerUI::OpenFileDialog() {
+void ImgViewerUI::OpenFileDialog() {
   OPENFILENAMEA ofn = {};
   char filename[MAX_PATH] = {};
   ofn.lStructSize = sizeof(ofn);
@@ -1125,36 +1123,36 @@ void ImageViewerUI::OpenFileDialog() {
       m_imageRenderer.ClearTexture();
     }
 
-    if (m_imageViewer.LoadImage(filename)) {
+    if (m_imgViewer.LoadImage(filename)) {
       UpdateHistogram();
       m_renderer->BeginRender();
       m_imageRenderer.UploadImage(m_renderer->GetDevice(),
                                   m_renderer->GetCommandList(),
-                                  m_imageViewer.GetImageData());
+                                  m_imgViewer.GetImageData());
       m_renderer->EndRender();
     }
   }
 }
 
-void ImageViewerUI::PasteFromClipboard() {
+void ImgViewerUI::PasteFromClipboard() {
   // Clear existing texture before loading new one
   if (m_imageRenderer.HasTexture()) {
     m_imageRenderer.ClearTexture();
   }
 
-  if (m_imageViewer.LoadImageFromClipboard()) {
+  if (m_imgViewer.LoadImageFromClipboard()) {
     UpdateHistogram();
 
     // Upload the new image to GPU
     m_renderer->BeginRender();
     m_imageRenderer.UploadImage(m_renderer->GetDevice(),
                                 m_renderer->GetCommandList(),
-                                m_imageViewer.GetImageData());
+                                m_imgViewer.GetImageData());
     m_renderer->EndRender();
   }
 }
 
-void ImageViewerUI::HandleGlobalShortcuts() {
+void ImgViewerUI::HandleGlobalShortcuts() {
   // Check for Ctrl+O
   if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O, false)) {
     OpenFileDialog();
