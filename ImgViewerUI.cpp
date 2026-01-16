@@ -71,8 +71,6 @@ void ImgViewerUI::Render() {
   ImGui::Begin("DockSpaceWindow", nullptr, dockspaceFlags);
   ImGui::PopStyleVar(3);
 
-  ImGui::PopStyleVar(3);
-
   ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
 
   // Handle Layout Reset Request
