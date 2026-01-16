@@ -1,6 +1,10 @@
-# ImgViewer
+# I'm gViewer
 
 **ImgViewer** is a lightweight, high-performance image viewer designed for graphics programmers. It is inspired by tools like [WinPIX](https://devblogs.microsoft.com/pix/download/) and [RenderDoc](https://renderdoc.org/), providing a quick way to inspect image files without the overhead of heavy debugging suites.
+
+**NOTE** This app is mostly vibed with AI. So don't expect a tasty code. I start with Copilot/ClaudeCode and then I use Antigravity to complete last 70% work.
+
+![](screenshot.png)
 
 ## Features
 
@@ -42,7 +46,7 @@ cmake --build build --config Release
 
 ## Usage
 
-- **Open Image**: Drag and drop an image file into the window, or paste from clipboard (`Ctrl+V` support coming soon).
+- **Open Image**: Drag and drop an image file into the window, or paste from clipboard (`Ctrl+V` support arrived).
 - **Pan**: Middle Mouse Button drag.
 - **Zoom**: Mouse Wheel.
 - **Magnify**: Right-click to show the magnifier.
