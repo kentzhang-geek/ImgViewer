@@ -746,9 +746,35 @@ void ImgViewerUI::RenderMagnifier() {
         float b = imgData.pixels[pixelIdx + 2];
         float a = imgData.pixels[pixelIdx + 3];
 
-        ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(
-            r, g, b,
-            1.0f)); // Force alpha to 1 for visibility? Or use actual alpha?
+        // Apply Range and Channel Settings
+        float rangeMin = m_imgViewer.GetRangeMin();
+        float rangeMax = m_imgViewer.GetRangeMax();
+        float rangeSize = rangeMax - rangeMin;
+        if (rangeSize <= 0.0f)
+          rangeSize = 1.0f;
+
+        auto remap = [&](float val) -> float {
+          return std::max(0.0f, std::min(1.0f, (val - rangeMin) / rangeSize));
+        };
+
+        if (!m_showR)
+          r = 0.0f;
+        else
+          r = remap(r);
+
+        if (!m_showG)
+          g = 0.0f;
+        else
+          g = remap(g);
+
+        if (!m_showB)
+          b = 0.0f;
+        else
+          b = remap(b);
+
+        ImU32 color = ImGui::ColorConvertFloat4ToU32(
+            ImVec4(r, g, b,
+                   1.0f)); // Force alpha to 1 for visibility
         // Using checkerboard for transparency would be nice, but simple color
         // is fine for now. Let's use alpha blending if A < 1
 
