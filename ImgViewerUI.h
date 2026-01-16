@@ -3,22 +3,55 @@
 #include "ImageRenderer.h"
 #include "ImgViewer.h"
 
+/**
+ * @brief Manages the User Interface and interaction logic.
+ */
 class ImgViewerUI {
 public:
+  /**
+   * @brief Constructor.
+   */
   ImgViewerUI();
+
+  /**
+   * @brief Destructor.
+   */
   ~ImgViewerUI();
 
+  /**
+   * @brief Initializes the UI and core components.
+   * @param renderer Pointer to the DX12Renderer instance.
+   */
   void Initialize(DX12Renderer *renderer);
+
+  /**
+   * @brief Renders the ImGui user interface.
+   * \note This should be called within an active ImGui frame.
+   */
   void Render();
 
-  // New method for Render-to-Texture
+  /**
+   * @brief Renders the current image into an intermediate texture for display.
+   * @param commandList The graphics command list to record rendering commands
+   * into.
+   */
   void RenderImageToTexture(ID3D12GraphicsCommandList *commandList);
 
-  // Old method - can be removed or deprecated
+  /**
+   * @deprecated Old immediate render method. Use RenderImageToTexture instead.
+   */
   void RenderImage(ID3D12GraphicsCommandList *commandList, int screenWidth,
                    int screenHeight);
+
+  /**
+   * @brief Handles file drag and drop events.
+   * @param filepath Path to the dropped file.
+   */
   void HandleDragDrop(const std::string &filepath);
 
+  /**
+   * @brief Accessor for the main ImgViewer instance.
+   */
   ImgViewer &GetImgViewer() { return m_imgViewer; }
 
 private:

@@ -4,18 +4,52 @@
 
 using namespace Microsoft::WRL;
 
+/**
+ * @brief Core DirectX 12 Renderer class managing the device, swap chain, and
+ * command queues.
+ */
 class DX12Renderer {
 public:
+  /**
+   * @brief Constructor.
+   */
   DX12Renderer();
+
+  /**
+   * @brief Destructor.
+   */
   ~DX12Renderer();
 
+  /**
+   * @brief Initializes DirectX 12 resources and the swap chain.
+   * @param hwnd Handle to the window.
+   * @param width Initial window width.
+   * @param height Initial window height.
+   * @return True if initialization successfully.
+   */
   bool Initialize(HWND hwnd, UINT width, UINT height);
+
+  /**
+   * @brief Cleans up D3D12 resources.
+   */
   void Cleanup();
+
+  /**
+   * @brief Begins a new rendering frame (resets command list, etc.).
+   */
   void BeginRender();
+
+  /**
+   * @brief Ends the current frame (executes command list, presents).
+   */
   void EndRender();
+
+  /**
+   * @brief Handles window resize events.
+   */
   void OnResize(UINT width, UINT height);
 
-  // ImGui integration
+  // ImGui integration getters
   ID3D12Device *GetDevice() const { return m_device.Get(); }
   ID3D12CommandQueue *GetCommandQueue() const { return m_commandQueue.Get(); }
   ID3D12DescriptorHeap *GetSrvHeap() const { return m_srvHeap.Get(); }
@@ -31,6 +65,9 @@ public:
   UINT GetWidth() const { return m_width; }
   UINT GetHeight() const { return m_height; }
 
+  /**
+   * @brief Waits for the GPU to finish all pending work.
+   */
   void WaitForGpu();
 
 private:

@@ -15,8 +15,8 @@
 #define MAX_LOADSTRING 100
 #define WINDOW_NAME L"BorderlessWindowClass"
 
-// 全局变量:
-HINSTANCE hInst; // 当前实例
+// Global Variables:
+HINSTANCE hInst; // Current Instance
 
 // DX12 Renderer
 DX12Renderer *g_pRenderer = nullptr;
@@ -26,11 +26,14 @@ ImgViewerUI *g_pViewerUI = nullptr;
 const int g_ResizeBorderWidth = 8;
 const int g_TitleBarHeight = 32;
 
-// 此代码模块中包含的函数的前向声明:
+// Forward declarations of functions included in this code module:
 ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
+/**
+ * @brief Main entry point of the application.
+ */
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine,
                       _In_ int nCmdShow) {
@@ -145,11 +148,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   return (int)msg.wParam;
 }
 
-//
-//  函数: MyRegisterClass()
-//
-//  目标: 注册窗口类。
-//
+/**
+ * @brief Registers the window class.
+ * @param hInstance Application instance handle.
+ * @return ATOM identifying the registered class.
+ */
 ATOM MyRegisterClass(HINSTANCE hInstance) {
   // Register the windows class
   WNDCLASSEXW wcx{};
@@ -161,47 +164,24 @@ ATOM MyRegisterClass(HINSTANCE hInstance) {
   wcx.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
   wcx.hCursor = ::LoadCursorW(nullptr, IDC_ARROW);
   return RegisterClassExW(&wcx);
-
-  // WNDCLASS wndClass;
-  // wndClass.style = CS_DBLCLKS;
-  // wndClass.lpfnWndProc = WndProc;
-  // wndClass.cbClsExtra = 0;
-  // wndClass.cbWndExtra = 0;
-  // wndClass.hInstance = hInstance;
-  // wndClass.hIcon = LoadIcon(hInstance,
-  // MAKEINTRESOURCE(IDI_RAYTRACINGPLAYGROUND));; wndClass.hCursor =
-  // LoadCursor(nullptr, IDC_ARROW); wndClass.hbrBackground =
-  // (HBRUSH)GetStockObject(BLACK_BRUSH); wndClass.lpszMenuName =
-  // MAKEINTRESOURCEW(IDC_RAYTRACINGPLAYGROUND);; wndClass.lpszClassName =
-  // szWindowClass;
-  //
-  // return RegisterClass(&wndClass);
 }
 
-//
-//   函数: InitInstance(HINSTANCE, int)
-//
-//   目标: 保存实例句柄并创建主窗口
-//
-//   注释:
-//
-//        在此函数中，我们在全局变量中保存实例句柄并
-//        创建和显示主程序窗口。
-//
+/**
+ * @brief Saves instance handle and creates main window.
+ *
+ * In this function, we save the instance handle in a global variable and
+ * create and display the main program window.
+ *
+ * @param hInstance Instance handle.
+ * @param nCmdShow Show window command.
+ * @return BOOL True on success, False on failure.
+ */
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
-  hInst = hInstance; // 将实例句柄存储在全局变量中
+  hInst = hInstance; // Store instance handle in our global variable
 
   // This example uses a non-resizable 640 by 480 viewport for simplicity.
   int nDefaultWidth = 1920;
   int nDefaultHeight = 1080;
-
-  // HWND hWnd = CreateWindow(szWindowClass, szTitle,
-  //                          WS_POPUP | WS_THICKFRAME | WS_SYSMENU |
-  //                          WS_MAXIMIZEBOX | WS_MINIMIZEBOX,
-  //                          // WS_THICKFRAME,
-  //                          CW_USEDEFAULT, CW_USEDEFAULT, nDefaultWidth,
-  //                          nDefaultHeight, nullptr, nullptr, hInstance,
-  //                          nullptr);
 
   // Use WS_POPUP to remove all standard decorations, but we need some frames
   // for standard behavior logic internally often standard WS_OVERLAPPEDWINDOW
@@ -298,16 +278,19 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
   return TRUE;
 }
 
-//
-//  函数: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  目标: 处理主窗口的消息。
-//
-//  WM_COMMAND  - 处理应用程序菜单
-//  WM_PAINT    - 绘制主窗口
-//  WM_DESTROY  - 发送退出消息并返回
-//
-//
+/**
+ * @brief Processes messages for the main window.
+ *
+ * WM_COMMAND  - Process the application menu
+ * WM_PAINT    - Paint the main window
+ * WM_DESTROY  - Post a quit message and return
+ *
+ * @param hWnd Window handle.
+ * @param message Message ID.
+ * @param wParam Word parameter.
+ * @param lParam Long parameter.
+ * @return LRESULT Message processing result.
+ */
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
                          LPARAM lParam) {
   extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(

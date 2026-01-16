@@ -4,21 +4,55 @@
 
 using namespace Microsoft::WRL;
 
+/**
+ * @brief Handles DirectX 12 rendering of images.
+ */
 class ImageRenderer {
 public:
+  /**
+   * @brief Constructor.
+   */
   ImageRenderer();
+
+  /**
+   * @brief Destructor.
+   */
   ~ImageRenderer();
 
+  /**
+   * @brief Initializes the renderer resources.
+   * @param device Pointer to the D3D12 Device.
+   * @param srvHeap Pointer to the SRV Descriptor Heap.
+   * @param srvDescriptorSize Size of the SRV descriptor increment.
+   * @return True if initialization succeeded.
+   */
   bool Initialize(ID3D12Device *device, ID3D12DescriptorHeap *srvHeap,
                   UINT srvDescriptorSize);
+
+  /**
+   * @brief Cleans up resources.
+   */
   void Cleanup();
+
+  /**
+   * @brief Clears the current texture and resets state.
+   */
   void ClearTexture();
 
-  // Upload image data to GPU and create texture
+  /**
+   * @brief Uploads image data to the GPU and creates a texture resource.
+   * @param device D3D12 Device.
+   * @param commandList Graphics command list to record upload commands.
+   * @param imageData Data to upload.
+   * @return True if successful.
+   */
   bool UploadImage(ID3D12Device *device, ID3D12GraphicsCommandList *commandList,
                    const ImageData &imageData);
 
-  // Render the image quad to a specific viewport region
+  /**
+   * @brief Renders the image quad to the screen (immediate mode).
+   * @note Used by the old rendering path.
+   */
   void Render(ID3D12GraphicsCommandList *commandList, float zoom,
               const DirectX::XMFLOAT2 &pan, float rangeMin, float rangeMax,
               bool showR, bool showG, bool showB, int viewportX, int viewportY,
@@ -56,15 +90,25 @@ private:
   int m_renderTargetHeight = 0;
 
 public:
-  // Resize the intermediate render target
+  /**
+   * @brief Resizes the intermediate render target texture.
+   * @param width New width.
+   * @param height New height.
+   * @return True if successful.
+   */
   bool ResizeRenderTarget(ID3D12Device *device, int width, int height);
 
-  // Render the image to the intermediate texture
+  /**
+   * @brief Renders the image into the intermediate render target.
+   */
   void RenderToTexture(ID3D12GraphicsCommandList *commandList, float zoom,
                        const DirectX::XMFLOAT2 &pan, float rangeMin,
                        float rangeMax, bool showR, bool showG, bool showB);
 
-  // Get the SRV for the rendered texture (to pass to ImGui)
+  /**
+   * @brief Gets the SRV GPU handle for the rendered intermediate texture.
+   * @return GPU handle for use with ImGui::Image.
+   */
   D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSrvGpuHandle() const {
     return m_outputSrvGpuHandle;
   }
