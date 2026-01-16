@@ -1,7 +1,7 @@
-#pragma once
 #include "DX12Renderer.h"
 #include "ImageRenderer.h"
 #include "ImgViewer.h"
+#include "imgui.h"
 
 /**
  * @brief Manages the User Interface and interaction logic.
@@ -107,4 +107,13 @@ private:
   void OpenFileDialog();
   void PasteFromClipboard();
   void HandleGlobalShortcuts();
+
+  // Config & Layout
+  bool m_showConfigPanel = false;
+  float m_crosslineColor[4] = {1.0f, 1.0f, 0.0f,
+                               0.5f}; // Default Yellow, semi-transparent
+  bool m_layoutInitialized = false;
+
+  void RenderConfigPanel();
+  void ApplyDefaultLayout(ImGuiID dockspaceId);
 };

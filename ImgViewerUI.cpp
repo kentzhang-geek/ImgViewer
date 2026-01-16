@@ -1,6 +1,7 @@
 #include "ImgViewerUI.h"
 #include "Logger.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "pch.h"
 #include <algorithm>
 #include <commdlg.h>
@@ -73,7 +74,18 @@ void ImgViewerUI::Render() {
   ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
   ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
+  // Initialize Default Layout if first run (node doesn't exist)
+  if (!m_layoutInitialized) {
+    if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr) {
+      ApplyDefaultLayout(dockspaceId);
+    }
+    m_layoutInitialized = true;
+  }
+
   ImGui::End();
+
+  // Render Config Panel (independent window)
+  RenderConfigPanel();
 
   // Image View Window (dockable)
   ImGui::Begin("Image View");
@@ -322,8 +334,10 @@ void ImgViewerUI::RenderImageView() {
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-    // Yellow color with semi-transparency
-    ImU32 crosshairColor = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.0f, 0.5f));
+    // Customizable Crossline Color
+    ImU32 crosshairColor =
+        ImGui::GetColorU32(ImVec4(m_crosslineColor[0], m_crosslineColor[1],
+                                  m_crosslineColor[2], m_crosslineColor[3]));
     ImU32 boxColor = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
 
     // Pixel top-left in screen coordinates
@@ -989,8 +1003,12 @@ void ImgViewerUI::RenderTitleBar() {
         PasteFromClipboard();
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Exit", "Esc"))
+      if (ImGui::MenuItem("Configuration", nullptr, &m_showConfigPanel)) {
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Exit", "Alt+F4")) {
         exit(0);
+      }
       ImGui::EndPopup();
     }
 
@@ -1002,9 +1020,10 @@ void ImgViewerUI::RenderTitleBar() {
     // Reset Y to 0 for buttons to be flush with top
     ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - buttonsAreaWidth, 0));
 
-    // We need to remove padding to make buttons flush with edges if desired,
-    // or keep them as isolated buttons. Modern apps often have flush buttons in
-    // top right. Let's keep them as buttons but style them.
+    // We need to remove padding to make buttons flush with edges if
+    // desired, or keep them as isolated buttons. Modern apps often have
+    // flush buttons in top right. Let's keep them as buttons but style
+    // them.
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
@@ -1162,4 +1181,47 @@ void ImgViewerUI::HandleGlobalShortcuts() {
   if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
     PasteFromClipboard();
   }
+}
+
+void ImgViewerUI::RenderConfigPanel() {
+  if (!m_showConfigPanel)
+    return;
+
+  if (ImGui::Begin("Configuration", &m_showConfigPanel)) {
+    ImGui::Text("UI Settings");
+    ImGui::Separator();
+
+    ImGui::Text("Crossline Color");
+    ImGui::ColorPicker4("##CrosslineColor", m_crosslineColor,
+                        ImGuiColorEditFlags_AlphaBar |
+                            ImGuiColorEditFlags_NoSidePreview |
+                            ImGuiColorEditFlags_NoSmallPreview);
+
+    ImGui::Separator();
+    ImGui::Text("Layout");
+    if (ImGui::Button("Reset to Default Layout")) {
+      ApplyDefaultLayout(ImGui::GetID("MainDockSpace"));
+    }
+  }
+  ImGui::End();
+}
+
+void ImgViewerUI::ApplyDefaultLayout(ImGuiID dockspaceId) {
+  ImGui::DockBuilderRemoveNode(dockspaceId);
+  ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
+
+  ImGuiID dock_main_id = dockspaceId;
+  ImGuiID dock_id_right =
+      ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.25f, nullptr,
+                                  &dock_main_id); // Info panel on Right
+  ImGuiID dock_id_bottom =
+      ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr,
+                                  &dock_main_id); // Plot/Histogram on Bottom
+
+  ImGui::DockBuilderDockWindow("Image View", dock_main_id);
+  ImGui::DockBuilderDockWindow("Info", dock_id_right);
+  ImGui::DockBuilderDockWindow("Plot", dock_id_bottom);
+
+  ImGui::DockBuilderFinish(dockspaceId);
 }
