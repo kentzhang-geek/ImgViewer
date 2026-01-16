@@ -1,0 +1,1167 @@
+#include "ImageViewerUI.h"
+#include "Logger.h"
+#include "imgui.h"
+#include "pch.h"
+#include <algorithm>
+#include <commdlg.h>
+
+ImageViewerUI::ImageViewerUI() : m_renderer(nullptr) {
+  m_histogramR.resize(m_histogramBins, 0);
+  m_histogramG.resize(m_histogramBins, 0);
+  m_histogramB.resize(m_histogramBins, 0);
+}
+
+ImageViewerUI::~ImageViewerUI() {}
+
+void ImageViewerUI::Initialize(DX12Renderer *renderer) {
+  LOG("ImageViewerUI::Initialize - renderer=%p", renderer);
+  m_renderer = renderer;
+
+  // Initialize image renderer
+  UINT srvDescSize = renderer->GetDevice()->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  LOG("ImageViewerUI::Initialize - SRV descriptor size=%u", srvDescSize);
+
+  if (!m_imageRenderer.Initialize(renderer->GetDevice(), renderer->GetSrvHeap(),
+                                  srvDescSize)) {
+    LOG_ERROR(
+        "ImageViewerUI::Initialize - Failed to initialize ImageRenderer!");
+  } else {
+    LOG("ImageViewerUI::Initialize - ImageRenderer initialized successfully");
+  }
+
+  SetupImGuiStyle();
+}
+
+void ImageViewerUI::Render() {
+  ImGuiIO &io = ImGui::GetIO();
+
+  // Render Custom Title Bar (includes Menu Bar)
+  RenderTitleBar();
+
+  // Handle Global Shortcuts
+  HandleGlobalShortcuts();
+
+  // Determine Title Bar Height for DockSpace offset
+  // The Title Bar is a fixed height, usually standard frame padding + font size
+  // or we can just measure it? But we need to set the position explicitly for
+  // the DockSpace. Let's assume a fixed height of 32px for now (matches
+  // main.cpp definition).
+  float titleBarHeight = 32.0f;
+
+  // Create dockspace over the entire window area (below menu bar)
+  ImGuiWindowFlags dockspaceFlags =
+      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+      ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBackground;
+
+  ImGuiViewport *viewport = ImGui::GetMainViewport();
+
+  ImGui::SetNextWindowPos(
+      ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + titleBarHeight));
+  ImGui::SetNextWindowSize(
+      ImVec2(viewport->WorkSize.x, viewport->WorkSize.y - titleBarHeight));
+  ImGui::SetNextWindowViewport(viewport->ID);
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+  ImGui::Begin("DockSpaceWindow", nullptr, dockspaceFlags);
+  ImGui::PopStyleVar(3);
+
+  ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
+  ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+  ImGui::End();
+
+  // Image View Window (dockable)
+  ImGui::Begin("Image View");
+  RenderImageView();
+  HandleImageInteraction();
+  ImGui::End();
+
+  // Info Panel Window (dockable)
+  ImGui::Begin("Info");
+  RenderInfoPanel();
+  ImGui::End();
+
+  // Plot Window (dockable)
+  ImGui::Begin("Plot");
+  RenderRangeControls();
+  RenderHistogram();
+  ImGui::End();
+
+  // Modern Window Outline
+  // Draw a 1px border around the entire viewport to give it definition.
+  // We use the ForegroundDrawList to draw on top of everything.
+  ImGui::GetForegroundDrawList()->AddRect(
+      viewport->Pos,
+      ImVec2(viewport->Pos.x + viewport->Size.x,
+             viewport->Pos.y + viewport->Size.y),
+      IM_COL32(60, 60, 60, 255), // Subtle grey border
+      6.0f,                      // Match DWM rounding (approx 6-8px, using 6)
+      0,
+      1.0f); // 1px thickness
+}
+
+void ImageViewerUI::RenderMainPanel() {
+  const auto &imgData = m_imageViewer.GetImageData();
+
+  if (!m_imageViewer.HasImage()) {
+    ImGui::Text("Drag and drop an image file here");
+    ImGui::Text("or use File > Paste from Clipboard");
+    return;
+  }
+
+  // Image view area
+  ImVec2 availSize = ImGui::GetContentRegionAvail();
+  availSize.y -= 200.0f; // Reserve space for histogram
+
+  ImGui::BeginChild("ImageView", availSize, true, ImGuiWindowFlags_NoScrollbar);
+  RenderImageView();
+  ImGui::EndChild();
+
+  // Histogram area
+  ImGui::BeginChild("Histogram", ImVec2(0, 0), true);
+  RenderRangeControls();
+  RenderHistogram();
+  ImGui::EndChild();
+}
+
+void ImageViewerUI::RenderInfoPanel() {
+  const auto &imgData = m_imageViewer.GetImageData();
+
+  ImGui::Text("Image Information");
+  ImGui::Separator();
+
+  if (!m_imageViewer.HasImage()) {
+    ImGui::Text("No image loaded");
+    return;
+  }
+
+  ImGui::Text("Filename: %s", imgData.filename.c_str());
+  ImGui::Text("Dimensions: %d x %d", imgData.width, imgData.height);
+  ImGui::Text("Format: %s", imgData.format.c_str());
+  ImGui::Text("Pixel Format: %s", imgData.pixelFormat.c_str());
+  ImGui::Text("Channels: %d", imgData.channels);
+
+  ImGui::Separator();
+  ImGui::Text("Value Range:");
+  ImGui::Text("  Min: %.4f", imgData.minValue);
+  ImGui::Text("  Max: %.4f", imgData.maxValue);
+  if (imgData.hasNaN) {
+    ImGui::TextColored(ImVec4(1, 1, 0, 1), "  Contains NaN values");
+  }
+
+  ImGui::Separator();
+  ImGui::Text("View Controls:");
+  float zoom = m_imageViewer.GetZoom();
+  if (ImGui::SliderFloat("Zoom", &zoom, 0.1f, 10.0f)) {
+    m_imageViewer.SetZoom(zoom);
+  }
+
+  if (ImGui::Button("Reset View")) {
+    m_imageViewer.SetZoom(1.0f);
+    m_imageViewer.SetPan({0.0f, 0.0f});
+  }
+
+  // Pixel info on hover
+  if (m_hoveredPixel.x >= 0 && m_hoveredPixel.x < imgData.width &&
+      m_hoveredPixel.y >= 0 && m_hoveredPixel.y < imgData.height) {
+    ImGui::Separator();
+    ImGui::Text("Pixel at (%d, %d):", (int)m_hoveredPixel.x,
+                (int)m_hoveredPixel.y);
+
+    int pixelIdx =
+        ((int)m_hoveredPixel.y * imgData.width + (int)m_hoveredPixel.x) * 4;
+    float r = imgData.pixels[pixelIdx + 0];
+    float g = imgData.pixels[pixelIdx + 1];
+    float b = imgData.pixels[pixelIdx + 2];
+    float a = imgData.pixels[pixelIdx + 3];
+
+    ImGui::Text("  R: %.4f", r);
+    ImGui::Text("  G: %.4f", g);
+    ImGui::Text("  B: %.4f", b);
+    ImGui::Text("  A: %.4f", a);
+
+    ImVec4 color(r, g, b, a);
+    ImGui::ColorButton("Pixel Color", color,
+                       ImGuiColorEditFlags_NoTooltip |
+                           ImGuiColorEditFlags_NoBorder,
+                       ImVec2(50, 50));
+  }
+
+  // Magnifier view (bottom right)
+  if (m_showMagnifier) {
+    ImGui::Separator();
+    ImGui::Text("Magnified View");
+    RenderMagnifier();
+  }
+}
+
+// New method: Renders the image content into the intermediate texture
+void ImageViewerUI::RenderImageToTexture(
+    ID3D12GraphicsCommandList *commandList) {
+  if (!m_imageRenderer.HasTexture() || !m_renderer)
+    return;
+
+  // We only render if we have a valid target size (calculated in UI pass)
+  if (m_imageViewWidth <= 0 || m_imageViewHeight <= 0)
+    return;
+
+  // Check if we need to resize
+  // We can do this here safely because we are recording commands
+  // But we need the device to create resources
+  if (m_imageRenderer.GetRenderTargetWidth() != m_imageViewWidth ||
+      m_imageRenderer.GetRenderTargetHeight() != m_imageViewHeight) {
+    // This is a bit of a hack to create resources inside render loop,
+    // but since it's just resizing a texture, it should be fine.
+    // Ideally we'd do this at start of frame, but we only know size after UI
+    // layout (which happened prev frame? or just now?) Actually UI Render
+    // happened BEFORE this in main loop? No. In main.cpp we will call
+    // RenderToTexture BEFORE ImGui Render. So m_imageViewWidth is from LAST
+    // frame. That is acceptable (1 frame lag on resize is invisible).
+    // Wait for GPU to finish using the old resource before we destroy it!
+    m_renderer->WaitForGpu();
+    m_imageRenderer.ResizeRenderTarget(m_renderer->GetDevice(),
+                                       m_imageViewWidth, m_imageViewHeight);
+  }
+
+  float zoom = m_imageViewer.GetZoom();
+  auto pan = m_imageViewer.GetPan();
+  float rangeMin = m_imageViewer.GetRangeMin();
+  float rangeMax = m_imageViewer.GetRangeMax();
+
+  m_imageRenderer.RenderToTexture(commandList, zoom, pan, rangeMin, rangeMax,
+                                  m_showR, m_showG, m_showB);
+}
+
+void ImageViewerUI::RenderImageView() {
+  ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+  ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+
+  if (canvasSize.x <= 0 || canvasSize.y <= 0)
+    return;
+
+  // Save dimensions for the Render step (frame N+1 or later in frame N)
+  m_imageViewX = (int)canvasPos.x;
+  m_imageViewY = (int)canvasPos.y;
+  m_imageViewWidth = (int)canvasSize.x;
+  m_imageViewHeight = (int)canvasSize.y;
+
+  if (!m_imageViewer.HasImage()) {
+    // Draw background
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(
+        canvasPos,
+        ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y),
+        IM_COL32(30, 30, 30, 255));
+
+    // Center the text
+    const char *text = "Drag and drop an image file here\nor use File > Open";
+    ImVec2 textSize = ImGui::CalcTextSize(text);
+    ImVec2 textPos(canvasPos.x + (canvasSize.x - textSize.x) * 0.5f,
+                   canvasPos.y + (canvasSize.y - textSize.y) * 0.5f);
+    drawList->AddText(textPos, IM_COL32(128, 128, 128, 255), text);
+
+    ImGui::Dummy(canvasSize); // Consume space
+    return;
+  }
+
+  // Ensure Render Target exists (at least with some size) so we have a
+  // descriptor
+  if (m_imageRenderer.GetRenderTargetWidth() == 0) {
+    m_imageRenderer.ResizeRenderTarget(m_renderer->GetDevice(),
+                                       (int)canvasSize.x, (int)canvasSize.y);
+  }
+
+  // Display the Rendered Texture as an Image
+  // Using the GPU handle for the SRV
+  ImTextureID my_tex_id =
+      (ImTextureID)m_imageRenderer.GetOutputSrvGpuHandle().ptr;
+
+  // We want to draw the image covering the available space
+  // The "content" of the texture is rendered by RenderImageToTexture
+  ImGui::Image(my_tex_id, canvasSize);
+
+  // Handle interaction
+  // We use an InvisibleButton over the image to catch inputs if Image() didn't
+  ImGui::SetCursorScreenPos(canvasPos);
+  ImGui::InvisibleButton("ImageCanvas", canvasSize,
+                         ImGuiButtonFlags_MouseButtonLeft |
+                             ImGuiButtonFlags_MouseButtonMiddle |
+                             ImGuiButtonFlags_MouseButtonRight);
+
+  HandleImageInteraction();
+
+  // Draw crosshair overlay using ImGui (ON TOP of the image)
+  // Since we just drew the image using ImGui::Image, any subsequent draw calls
+  // (like AddLine) will be on top of it in the draw list.
+  const auto &imgData = m_imageViewer.GetImageData();
+  if (m_hoveredPixel.x >= 0) {
+    float zoom = m_imageViewer.GetZoom();
+    auto pan = m_imageViewer.GetPan();
+
+    int imgWidth = m_imageRenderer.GetImageWidth();
+    int imgHeight = m_imageRenderer.GetImageHeight();
+
+    // Calculations for crosshair position (screen space)
+    // Similar to RenderToTexture logic, but projecting to Screen Space
+
+    float displayWidth = imgWidth * zoom;
+    float displayHeight = imgHeight * zoom;
+
+    float offsetX = (m_imageViewWidth - displayWidth) * 0.5f + pan.x;
+    float offsetY = (m_imageViewHeight - displayHeight) * 0.5f + pan.y;
+
+    // Calculate pixel position in screen coordinates
+    float pixelScreenX = m_imageViewX + offsetX + m_hoveredPixel.x * zoom;
+    float pixelScreenY = m_imageViewY + offsetY + m_hoveredPixel.y * zoom;
+
+    // Clamp to view area? No, crosshair can extend
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+    // Yellow color with semi-transparency
+    ImU32 crosshairColor = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.0f, 0.5f));
+    ImU32 boxColor = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
+
+    // Pixel top-left in screen coordinates
+    // We use floor to snap strictly to grid visual
+    int ix = (int)m_hoveredPixel.x;
+    int iy = (int)m_hoveredPixel.y;
+
+    float px1 = m_imageViewX + offsetX + ix * zoom;
+    float py1 = m_imageViewY + offsetY + iy * zoom;
+    float px2 = px1 + zoom;
+    float py2 = py1 + zoom;
+
+    // Horizontal line (through center of pixel)
+    float centerY = (py1 + py2) * 0.5f;
+    float x1 = (float)m_imageViewX;
+    float x2 = (float)(m_imageViewX + m_imageViewWidth);
+    drawList->AddLine(ImVec2(x1, centerY), ImVec2(x2, centerY), crosshairColor,
+                      1.0f);
+
+    // Vertical line (through center of pixel)
+    float centerX = (px1 + px2) * 0.5f;
+    float y1 = (float)m_imageViewY;
+    float y2 = (float)(m_imageViewY + m_imageViewHeight);
+    drawList->AddLine(ImVec2(centerX, y1), ImVec2(centerX, y2), crosshairColor,
+                      1.0f);
+
+    // Bounding box around the pixel
+    // Expand slightly out so it surrounds the pixel? Or exact?
+    // Exact is better for precision.
+    drawList->AddRect(ImVec2(px1, py1), ImVec2(px2, py2), boxColor, 0.0f, 0,
+                      1.0f);
+  }
+}
+
+static int s_renderImageCallCount = 0;
+
+void ImageViewerUI::RenderImage(ID3D12GraphicsCommandList *commandList,
+                                int screenWidth, int screenHeight) {
+  s_renderImageCallCount++;
+  bool shouldLog = (s_renderImageCallCount <= 5);
+
+  if (shouldLog) {
+    LOG("ImageViewerUI::RenderImage[%d] - m_needsImageRender=%d, HasTexture=%d",
+        s_renderImageCallCount, m_needsImageRender ? 1 : 0,
+        m_imageRenderer.HasTexture() ? 1 : 0);
+  }
+
+  if (!m_needsImageRender || !m_imageRenderer.HasTexture()) {
+    if (shouldLog) {
+      LOG("ImageViewerUI::RenderImage[%d] - Skipping: m_needsImageRender=%d, "
+          "HasTexture=%d",
+          s_renderImageCallCount, m_needsImageRender ? 1 : 0,
+          m_imageRenderer.HasTexture() ? 1 : 0);
+    }
+    return;
+  }
+
+  float zoom = m_imageViewer.GetZoom();
+  auto pan = m_imageViewer.GetPan();
+  float rangeMin = m_imageViewer.GetRangeMin();
+  float rangeMax = m_imageViewer.GetRangeMax();
+
+  if (shouldLog) {
+    LOG("ImageViewerUI::RenderImage[%d] - Calling ImageRenderer::Render with "
+        "viewport (%d,%d,%d,%d)",
+        s_renderImageCallCount, m_imageViewX, m_imageViewY, m_imageViewWidth,
+        m_imageViewHeight);
+  }
+
+  m_imageRenderer.Render(commandList, zoom, pan, rangeMin, rangeMax, m_showR,
+                         m_showG, m_showB, m_imageViewX, m_imageViewY,
+                         m_imageViewWidth, m_imageViewHeight, screenWidth,
+                         screenHeight);
+}
+
+void ImageViewerUI::HandleImageInteraction() {
+  const auto &imgData = m_imageViewer.GetImageData();
+  if (!m_imageViewer.HasImage())
+    return;
+
+  ImGuiIO &io = ImGui::GetIO();
+  bool isHovered = ImGui::IsItemHovered();
+
+  if (isHovered) {
+    // Zoom with mouse wheel
+    if (io.MouseWheel != 0.0f) {
+      float oldZoom = m_imageViewer.GetZoom();
+      float zoomFactor = (1.0f + io.MouseWheel * 0.1f);
+      float newZoom = oldZoom * zoomFactor;
+
+      // Limit zoom
+      newZoom = std::max(0.1f, std::min(newZoom, 50.0f));
+
+      // Calculate actual ratio applied
+      float ratio = newZoom / oldZoom;
+
+      if (ratio != 1.0f) {
+        // We want to keep the point under the mouse stable.
+        // ScreenPos = (WorldPos * Zoom) + Pan + Center
+        // Mouse = ScreenPos
+        // Mouse = (WorldPos * OldZoom) + OldPan + Center
+        // Mouse = (WorldPos * NewZoom) + NewPan + Center
+
+        // Solve for NewPan:
+        // NewPan = Mouse - Center - (WorldPos * NewZoom)
+        // WorldPos = (Mouse - Center - OldPan) / OldZoom
+        // NewPan = Mouse - Center - ((Mouse - Center - OldPan) / OldZoom) *
+        // NewZoom NewPan = (Mouse - Center) - (Mouse - Center - OldPan) * Ratio
+        // NewPan = OldPan * Ratio + RelMouse * (1 - Ratio)
+
+        auto oldPan = m_imageViewer.GetPan();
+
+        // Calculate Mouse Relative to Center of Viewport
+        // We need the ACTUAL viewport center, which is (m_imageViewWidth/2,
+        // m_imageViewHeight/2) Mouse coordinates are relative to the top-left
+        // of the viewport? Need to verify coordinate space of io.MousePos vs
+        // m_imageViewX/Y.
+
+        // m_imageViewX/Y is screen coordinates of top-left of viewport.
+        float viewCenterX = m_imageViewX + m_imageViewWidth * 0.5f;
+        float viewCenterY = m_imageViewY + m_imageViewHeight * 0.5f;
+
+        float relMouseX = io.MousePos.x - viewCenterX;
+        float relMouseY = io.MousePos.y - viewCenterY;
+
+        float newPanX = oldPan.x * ratio + relMouseX * (1.0f - ratio);
+        float newPanY = oldPan.y * ratio + relMouseY * (1.0f - ratio);
+
+        m_imageViewer.SetZoom(newZoom);
+        m_imageViewer.SetPan({newPanX, newPanY});
+      }
+    }
+
+    // Pan with middle mouse button
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+      if (!m_isPanning) {
+        m_isPanning = true;
+        m_lastMousePos = {io.MousePos.x, io.MousePos.y};
+      } else {
+        auto pan = m_imageViewer.GetPan();
+        pan.x += io.MousePos.x - m_lastMousePos.x;
+        pan.y += io.MousePos.y - m_lastMousePos.y;
+        m_imageViewer.SetPan(pan);
+        m_lastMousePos = {io.MousePos.x, io.MousePos.y};
+      }
+    } else {
+      m_isPanning = false;
+    }
+
+    // Calculate hovered pixel using the same viewport coordinates as rendering
+    // Use m_imageViewX/Y/Width/Height which are the actual DX12 rendering
+    // viewport
+    float zoom = m_imageViewer.GetZoom();
+    auto pan = m_imageViewer.GetPan();
+
+    int imgWidth = m_imageRenderer.GetImageWidth();
+    int imgHeight = m_imageRenderer.GetImageHeight();
+
+    float displayWidth = imgWidth * zoom;
+    float displayHeight = imgHeight * zoom;
+
+    // Center image in viewport, then apply pan
+    float offsetX = (m_imageViewWidth - displayWidth) * 0.5f + pan.x;
+    float offsetY = (m_imageViewHeight - displayHeight) * 0.5f + pan.y;
+
+    // Image top-left in screen coordinates
+    float imageScreenX = m_imageViewX + offsetX;
+    float imageScreenY = m_imageViewY + offsetY;
+
+    // Mouse position relative to image top-left
+    float relMouseX = io.MousePos.x - imageScreenX;
+    float relMouseY = io.MousePos.y - imageScreenY;
+
+    // Convert to pixel coordinates
+    float pixelX = relMouseX / zoom;
+    float pixelY = relMouseY / zoom;
+
+    if (pixelX >= 0 && pixelX < imgData.width && pixelY >= 0 &&
+        pixelY < imgData.height) {
+      m_hoveredPixel = {pixelX, pixelY};
+    } else {
+      m_hoveredPixel = {-1, -1};
+    }
+
+    // Right-click for magnifier
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        m_hoveredPixel.x >= 0) {
+      m_showMagnifier = true;
+      m_magnifierPos = m_hoveredPixel;
+    }
+  } else {
+    m_isPanning = false;
+  }
+}
+
+void ImageViewerUI::RenderRangeControls() {
+  float rangeMin = m_imageViewer.GetRangeMin();
+  float rangeMax = m_imageViewer.GetRangeMax();
+
+  ImGui::Text("Plot Value Range");
+
+  bool changed = false;
+  changed |= ImGui::DragFloat("Min", &rangeMin, 0.01f);
+  changed |= ImGui::DragFloat("Max", &rangeMax, 0.01f);
+
+  if (changed) {
+    m_imageViewer.SetRange(rangeMin, rangeMax);
+    UpdateHistogram(); // Update histogram when range changes
+  }
+
+  if (ImGui::Button("Auto Range")) {
+    const auto &imgData = m_imageViewer.GetImageData();
+
+    // If all channels are selected, use the pre-calculated global min/max
+    if (m_showR && m_showG && m_showB) {
+      m_imageViewer.SetRange(imgData.minValue, imgData.maxValue);
+    } else if (!m_showR && !m_showG && !m_showB) {
+      // No channels selected, do nothing or reset to 0-1
+      m_imageViewer.SetRange(0.0f, 1.0f);
+    } else {
+      // Calculate min/max for selected channels
+      float minVal = FLT_MAX;
+      float maxVal = -FLT_MAX;
+      int numPixels = imgData.width * imgData.height;
+
+      // Assuming RGBA packed
+      for (int i = 0; i < numPixels; ++i) {
+        size_t idx = i * 4;
+
+        if (m_showR) {
+          float v = imgData.pixels[idx + 0];
+          if (!std::isnan(v)) {
+            minVal = std::min(minVal, v);
+            maxVal = std::max(maxVal, v);
+          }
+        }
+        if (m_showG) {
+          float v = imgData.pixels[idx + 1];
+          if (!std::isnan(v)) {
+            minVal = std::min(minVal, v);
+            maxVal = std::max(maxVal, v);
+          }
+        }
+        if (m_showB) {
+          float v = imgData.pixels[idx + 2];
+          if (!std::isnan(v)) {
+            minVal = std::min(minVal, v);
+            maxVal = std::max(maxVal, v);
+          }
+        }
+      }
+
+      if (minVal <= maxVal) {
+        m_imageViewer.SetRange(minVal, maxVal);
+      }
+    }
+
+    UpdateHistogram(); // Update histogram when range changes
+  }
+
+  ImGui::SameLine();
+  if (ImGui::Button("0-1 Range")) {
+    m_imageViewer.SetRange(0.0f, 1.0f);
+    UpdateHistogram(); // Update histogram when range changes
+  }
+
+  ImGui::Separator();
+  ImGui::Text("Channels:");
+  ImGui::Checkbox("R", &m_showR);
+  ImGui::SameLine();
+  ImGui::Checkbox("G", &m_showG);
+  ImGui::SameLine();
+  ImGui::Checkbox("B", &m_showB);
+}
+
+void ImageViewerUI::RenderHistogram() {
+  // Legend
+  ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "R");
+  ImGui::SameLine();
+  ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "G");
+  ImGui::SameLine();
+  ImGui::TextColored(ImVec4(0.3f, 0.3f, 1.0f, 1.0f), "B");
+
+  if (m_histogramR.empty()) {
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                       "Load an image to see histogram");
+    return;
+  }
+
+  // Find max count for scaling (use log scale for better visualization)
+  float maxCount = 1.0f;
+  for (int i = 0; i < m_histogramBins; i++) {
+    float maxVal = (float)std::max(m_histogramR[i],
+                                   std::max(m_histogramG[i], m_histogramB[i]));
+    if (maxVal > 0)
+      maxCount = std::max(maxCount, std::log(maxVal + 1.0f));
+  }
+
+  // Calculate size for the plot area - use remaining space
+  ImVec2 availSize = ImGui::GetContentRegionAvail();
+  if (availSize.x < 10 || availSize.y < 10)
+    return;
+
+  // Use BeginChild to create isolated coordinate space for the plot
+  ImGui::BeginChild("##HistogramPlot", availSize, ImGuiChildFlags_None,
+                    ImGuiWindowFlags_NoScrollbar);
+  {
+    ImVec2 size = ImGui::GetContentRegionAvail();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+
+    // Reserve the space with an InvisibleButton to properly capture input
+    // This prevents mouse events from "falling through" to widgets behind
+    ImGui::InvisibleButton("##HistogramArea", size);
+
+    // Draw the histogram using the saved position (p) which is where we want to
+    // draw
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+    // Background
+    drawList->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y),
+                            IM_COL32(20, 20, 20, 255));
+    drawList->AddRect(p, ImVec2(p.x + size.x, p.y + size.y),
+                      IM_COL32(60, 60, 60, 255));
+
+    // Draw curve for each channel
+    auto drawCurve = [&](const std::vector<int> &hist, ImU32 color) {
+      if (hist.empty())
+        return;
+      std::vector<ImVec2> points;
+      points.reserve(m_histogramBins);
+
+      for (int i = 0; i < m_histogramBins; i++) {
+        float x = p.x + (i / (float)(m_histogramBins - 1)) * size.x;
+        float value = hist[i] > 0 ? std::log((float)hist[i] + 1.0f) : 0.0f;
+        float y = p.y + size.y - (value / maxCount) * size.y;
+        points.push_back(ImVec2(x, y));
+      }
+
+      if (points.size() >= 2) {
+        drawList->AddPolyline(points.data(), (int)points.size(), color,
+                              ImDrawFlags_None, 1.5f);
+      }
+    };
+
+    // Draw in order: B, G, R (so R is on top)
+    if (m_showB)
+      drawCurve(m_histogramB, IM_COL32(80, 80, 255, 255));
+    if (m_showG)
+      drawCurve(m_histogramG, IM_COL32(80, 255, 80, 255));
+    if (m_showR)
+      drawCurve(m_histogramR, IM_COL32(255, 80, 80, 255));
+  }
+  ImGui::EndChild();
+}
+
+void ImageViewerUI::RenderMagnifier() {
+  const auto &imgData = m_imageViewer.GetImageData();
+  if (!m_imageViewer.HasImage())
+    return;
+
+  int magnifySize = 13;    // 13x13 pixels
+  float pixelSize = 15.0f; // Size of each magnified pixel on screen
+
+  ImVec2 size(magnifySize * pixelSize, magnifySize * pixelSize);
+
+  // Position for the magnifier content
+  ImVec2 p = ImGui::GetCursorScreenPos();
+
+  ImGui::InvisibleButton("##MagnifierArea", size);
+
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+  // Background for out of bounds
+  drawList->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y),
+                          IM_COL32(20, 20, 20, 255));
+
+  int halfSize = magnifySize / 2;
+  int centerX = (int)m_magnifierPos.x;
+  int centerY = (int)m_magnifierPos.y;
+
+  for (int y = 0; y < magnifySize; y++) {
+    for (int x = 0; x < magnifySize; x++) {
+      int imgX = centerX + (x - halfSize);
+      int imgY = centerY + (y - halfSize);
+
+      // Calculate screen position for this pixel rect
+      float screenX = p.x + x * pixelSize;
+      float screenY = p.y + y * pixelSize;
+
+      if (imgX >= 0 && imgX < imgData.width && imgY >= 0 &&
+          imgY < imgData.height) {
+        // Get pixel color
+        int pixelIdx = (imgY * imgData.width + imgX) * 4;
+        float r = imgData.pixels[pixelIdx + 0];
+        float g = imgData.pixels[pixelIdx + 1];
+        float b = imgData.pixels[pixelIdx + 2];
+        float a = imgData.pixels[pixelIdx + 3];
+
+        ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(
+            r, g, b,
+            1.0f)); // Force alpha to 1 for visibility? Or use actual alpha?
+        // Using checkerboard for transparency would be nice, but simple color
+        // is fine for now. Let's use alpha blending if A < 1
+
+        // Draw pixel
+        drawList->AddRectFilled(
+            ImVec2(screenX, screenY),
+            ImVec2(screenX + pixelSize, screenY + pixelSize), color);
+      }
+
+      // Draw grid lines
+      drawList->AddRect(ImVec2(screenX, screenY),
+                        ImVec2(screenX + pixelSize, screenY + pixelSize),
+                        IM_COL32(50, 50, 50, 255));
+    }
+  }
+
+  // Highlight center pixel
+  {
+    float screenX = p.x + halfSize * pixelSize;
+    float screenY = p.y + halfSize * pixelSize;
+    drawList->AddRect(ImVec2(screenX, screenY),
+                      ImVec2(screenX + pixelSize, screenY + pixelSize),
+                      IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
+  }
+
+  ImGui::Text("Magnifier at (%d, %d)", centerX, centerY);
+
+  // Display Center Pixel Info
+  if (centerX >= 0 && centerX < imgData.width && centerY >= 0 &&
+      centerY < imgData.height) {
+    int pixelIdx = (centerY * imgData.width + centerX) * 4;
+
+    float r = imgData.pixels[pixelIdx + 0];
+    float g = imgData.pixels[pixelIdx + 1];
+    float b = imgData.pixels[pixelIdx + 2];
+    float a = imgData.pixels[pixelIdx + 3];
+
+    ImGui::Text("R: %.4f  G: %.4f", r, g);
+    ImGui::Text("B: %.4f  A: %.4f", b, a);
+
+    // Optional: Hex representation
+    ImU32 colorU32 = ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a));
+    ImGui::Text("Hex: #%08X", colorU32);
+  }
+
+  if (ImGui::Button("Close Magnifier")) {
+    m_showMagnifier = false;
+  }
+}
+
+void ImageViewerUI::UpdateHistogram() {
+  const auto &imgData = m_imageViewer.GetImageData();
+  if (!m_imageViewer.HasImage())
+    return;
+
+  // Clear histograms
+  std::fill(m_histogramR.begin(), m_histogramR.end(), 0);
+  std::fill(m_histogramG.begin(), m_histogramG.end(), 0);
+  std::fill(m_histogramB.begin(), m_histogramB.end(), 0);
+
+  float rangeMin = m_imageViewer.GetRangeMin();
+  float rangeMax = m_imageViewer.GetRangeMax();
+  float rangeSize = rangeMax - rangeMin;
+
+  if (rangeSize <= 0.0f)
+    return;
+
+  // Build histograms
+  for (int i = 0; i < imgData.width * imgData.height; i++) {
+    int pixelIdx = i * 4;
+
+    for (int ch = 0; ch < 3; ch++) {
+      float value = imgData.pixels[pixelIdx + ch];
+
+      if (std::isnan(value))
+        continue;
+
+      // Map to bin
+      int bin = (int)((value - rangeMin) / rangeSize * (m_histogramBins - 1));
+      bin = std::max(0, std::min(m_histogramBins - 1, bin));
+
+      if (ch == 0)
+        m_histogramR[bin]++;
+      else if (ch == 1)
+        m_histogramG[bin]++;
+      else
+        m_histogramB[bin]++;
+    }
+  }
+}
+
+void ImageViewerUI::HandleDragDrop(const std::string &filepath) {
+  LOG("ImageViewerUI::HandleDragDrop - filepath=%s", filepath.c_str());
+
+  // Clear existing texture before loading new one
+  if (m_imageRenderer.HasTexture()) {
+    m_imageRenderer.ClearTexture();
+  }
+
+  if (m_imageViewer.LoadImage(filepath)) {
+    LOG("ImageViewerUI::HandleDragDrop - Image loaded successfully");
+    const auto &imgData = m_imageViewer.GetImageData();
+    LOG("ImageViewerUI::HandleDragDrop - Image size: %dx%d, pixels.size=%zu",
+        imgData.width, imgData.height, imgData.pixels.size());
+
+    UpdateHistogram();
+    LOG("ImageViewerUI::HandleDragDrop - Histogram updated");
+
+    // Upload image to GPU
+    LOG("ImageViewerUI::HandleDragDrop - Starting GPU upload...");
+    m_renderer->BeginRender();
+    bool uploadResult = m_imageRenderer.UploadImage(
+        m_renderer->GetDevice(), m_renderer->GetCommandList(),
+        m_imageViewer.GetImageData());
+    m_renderer->EndRender();
+
+    if (uploadResult) {
+      LOG("ImageViewerUI::HandleDragDrop - GPU upload successful! "
+          "HasTexture=%d",
+          m_imageRenderer.HasTexture() ? 1 : 0);
+    } else {
+      LOG_ERROR("ImageViewerUI::HandleDragDrop - GPU upload FAILED!");
+    }
+  } else {
+    LOG_ERROR("ImageViewerUI::HandleDragDrop - Failed to load image: %s",
+              filepath.c_str());
+  }
+}
+
+void ImageViewerUI::SetupImGuiStyle() {
+  ImGuiStyle &style = ImGui::GetStyle();
+
+  // Rounding
+  style.WindowRounding = 6.0f;
+  style.FrameRounding = 4.0f;
+  style.PopupRounding = 4.0f;
+  style.ScrollbarRounding = 4.0f;
+  style.GrabRounding = 4.0f;
+  style.TabRounding = 6.0f;
+
+  // Sizes
+  style.WindowBorderSize = 1.0f;
+  style.FrameBorderSize = 0.0f;
+  style.PopupBorderSize = 1.0f;
+  style.FramePadding = ImVec2(8, 4);
+  style.ItemSpacing = ImVec2(8, 6);
+  style.ScrollbarSize = 14.0f;
+  style.WindowPadding = ImVec2(10, 10);
+
+  // Colors (Modern Dark Theme)
+  ImVec4 *colors = style.Colors;
+
+  // Backgrounds
+  colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.13f, 1.00f); // Dark grey
+  colors[ImGuiCol_ChildBg] = ImVec4(0.12f, 0.12f, 0.13f, 1.00f);
+  colors[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.12f, 0.13f, 0.98f);
+
+  // Headers / Title Bars
+  colors[ImGuiCol_TitleBg] = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
+  colors[ImGuiCol_TitleBgActive] = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
+  colors[ImGuiCol_MenuBarBg] = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
+
+  // Borders
+  colors[ImGuiCol_Border] = ImVec4(0.24f, 0.24f, 0.26f, 0.50f);
+  colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+
+  // Frames (Checkboxes, Inputs, Buttons)
+  colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.20f, 0.22f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered] = ImVec4(0.24f, 0.24f, 0.26f, 1.00f);
+  colors[ImGuiCol_FrameBgActive] = ImVec4(0.28f, 0.28f, 0.30f, 1.00f);
+
+  // Tabs
+  colors[ImGuiCol_Tab] = ImVec4(0.12f, 0.12f, 0.13f, 1.00f);
+  colors[ImGuiCol_TabHovered] = ImVec4(0.24f, 0.24f, 0.26f, 1.00f);
+  colors[ImGuiCol_TabActive] = ImVec4(0.20f, 0.20f, 0.22f, 1.00f);
+  colors[ImGuiCol_TabUnfocused] = ImVec4(0.12f, 0.12f, 0.13f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.12f, 0.12f, 0.13f, 1.00f);
+
+  // Interactive
+  colors[ImGuiCol_CheckMark] =
+      ImVec4(0.35f, 0.55f, 1.00f, 1.00f); // Blue accent
+  colors[ImGuiCol_SliderGrab] = ImVec4(0.35f, 0.55f, 1.00f, 1.00f);
+  colors[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.60f, 1.00f, 1.00f);
+  colors[ImGuiCol_Button] = ImVec4(0.20f, 0.20f, 0.22f, 1.00f);
+  colors[ImGuiCol_ButtonHovered] = ImVec4(0.24f, 0.24f, 0.26f, 1.00f);
+  colors[ImGuiCol_ButtonActive] = ImVec4(0.28f, 0.28f, 0.30f, 1.00f);
+
+  // Text
+  colors[ImGuiCol_Text] = ImVec4(0.90f, 0.90f, 0.92f, 1.00f);
+  colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.52f, 1.00f);
+}
+
+void ImageViewerUI::RenderTitleBar() {
+  ImGuiViewport *viewport = ImGui::GetMainViewport();
+  float titleBarHeight = 32.0f;
+
+  ImGui::SetNextWindowPos(viewport->Pos);
+  ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, titleBarHeight));
+
+  ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+      ImGuiWindowFlags_NoFocusOnAppearing |
+      ImGuiWindowFlags_NoNav; // Use a unique name
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 5));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg,
+                        ImVec4(0.10f, 0.10f, 0.11f, 1.00f)); // Dark title bar
+
+  if (ImGui::Begin("##TitleBar", nullptr, flags)) {
+    // 1. App Icon/Title
+    ImGui::SetCursorPos(ImVec2(10, 5)); // Use specific padding
+
+    // Use Title Font (Index 1) if available
+    if (ImGui::GetIO().Fonts->Fonts.Size > 1) {
+      ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[1]);
+    }
+
+    ImGui::TextColored(ImVec4(0.4f, 0.6f, 1.0f, 1.0f),
+                       "IMG"); // Placeholder icon
+    ImGui::SameLine();
+    ImGui::Text("ImageViewer");
+
+    if (ImGui::GetIO().Fonts->Fonts.Size > 1) {
+      ImGui::PopFont();
+    }
+
+    ImGui::SameLine(0, 20); // Spacing
+    ImGui::SetCursorPosY(
+        0.0f); // Align to top so 32px button is centered in 32px title bar
+
+    // 2. Menu Bar (Embedded)
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0)); // Transparent
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(1.0f, 1.0f, 1.0f, 0.1f)); // Subtle hover
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
+                        ImVec2(0.5f, 0.5f)); // Center text
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(0, 0)); // Remove padding to allow full centering
+
+    if (ImGui::Button("File", ImVec2(45, 32))) {
+      ImGui::OpenPopup("FileMenu");
+    }
+
+    // Calculate position for the popup (bottom-left of the button)
+    ImVec2 btnMin = ImGui::GetItemRectMin();
+    ImVec2 btnMax = ImGui::GetItemRectMax();
+    ImVec2 popupPos(btnMin.x, btnMax.y);
+
+    m_titleBarInteractWidth = btnMax.x + 10.0f;
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3); // Pop FrameRounding, ButtonTextAlign, FramePadding
+
+    ImGui::SetNextWindowPos(popupPos);
+    if (ImGui::BeginPopup("FileMenu")) {
+      if (ImGui::MenuItem("Open...", "Ctrl+O")) {
+        OpenFileDialog();
+      }
+      if (ImGui::MenuItem("Paste from Clipboard", "Ctrl+V")) {
+        PasteFromClipboard();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Exit", "Esc"))
+        exit(0);
+      ImGui::EndPopup();
+    }
+
+    // Window Controls (Right Aligned)
+    float buttonWidth = 46.0f;  // Wider buttons
+    float buttonHeight = 32.0f; // Full height
+    float buttonsAreaWidth = buttonWidth * 3;
+
+    // Reset Y to 0 for buttons to be flush with top
+    ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - buttonsAreaWidth, 0));
+
+    // We need to remove padding to make buttons flush with edges if desired,
+    // or keep them as isolated buttons. Modern apps often have flush buttons in
+    // top right. Let's keep them as buttons but style them.
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImVec4(0, 0, 0, 0)); // Transparent background
+
+    // Minimize
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+    if (ImGui::Button("##min", ImVec2(buttonWidth, buttonHeight))) {
+      ShowWindow(GetActiveWindow(), SW_MINIMIZE);
+    }
+    // Custom Draw for Minimize Icon (Underscore)
+    // Draw ON TOP of button (which is transparent)
+    // Note: GetWindowDrawList draws in window local space? No, screen space
+    // usually? Logic: GetWindowDrawList() is safer.
+    {
+      ImVec2 rectMin = ImGui::GetItemRectMin();
+      ImVec2 rectMax = ImGui::GetItemRectMax();
+      ImVec2 center = ImVec2((rectMin.x + rectMax.x) * 0.5f,
+                             (rectMin.y + rectMax.y) * 0.5f);
+      ImGui::GetWindowDrawList()->AddLine(ImVec2(center.x - 5, center.y + 2),
+                                          ImVec2(center.x + 5, center.y + 2),
+                                          IM_COL32(200, 200, 200, 255), 1.0f);
+    }
+    ImGui::PopStyleColor();
+
+    // Maximize/Restore
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+    bool isMaximized = IsZoomed(GetActiveWindow());
+    if (ImGui::Button("##max", ImVec2(buttonWidth, buttonHeight))) {
+      if (isMaximized)
+        ShowWindow(GetActiveWindow(), SW_RESTORE);
+      else
+        ShowWindow(GetActiveWindow(), SW_MAXIMIZE);
+    }
+    // Custom Draw for Maximize Icon (Square) or Restore (Two Squares)
+    {
+      ImVec2 rectMin = ImGui::GetItemRectMin();
+      ImVec2 rectMax = ImGui::GetItemRectMax();
+      ImVec2 center = ImVec2((rectMin.x + rectMax.x) * 0.5f,
+                             (rectMin.y + rectMax.y) * 0.5f);
+      if (isMaximized) {
+        // Restore icon (simplified)
+        ImGui::GetWindowDrawList()->AddRect(ImVec2(center.x - 4, center.y - 1),
+                                            ImVec2(center.x + 2, center.y + 5),
+                                            IM_COL32(200, 200, 200, 255), 0.0f,
+                                            0, 1.0f);
+      } else {
+        // Maximize icon
+        ImGui::GetWindowDrawList()->AddRect(ImVec2(center.x - 4, center.y - 4),
+                                            ImVec2(center.x + 4, center.y + 4),
+                                            IM_COL32(200, 200, 200, 255), 0.0f,
+                                            0, 1.0f);
+      }
+    }
+    ImGui::PopStyleColor();
+
+    // Close
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.9f, 0.2f, 0.2f, 1.0f)); // Red on hover
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                          ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
+    if (ImGui::Button("##close", ImVec2(buttonWidth, buttonHeight))) {
+      exit(0);
+    }
+    // Custom Draw for Close Icon (X)
+    {
+      ImVec2 rectMin = ImGui::GetItemRectMin();
+      ImVec2 rectMax = ImGui::GetItemRectMax();
+      ImVec2 center = ImVec2((rectMin.x + rectMax.x) * 0.5f,
+                             (rectMin.y + rectMax.y) * 0.5f);
+      ImGui::GetWindowDrawList()->AddLine(ImVec2(center.x - 4, center.y - 4),
+                                          ImVec2(center.x + 4, center.y + 4),
+                                          IM_COL32(200, 200, 200, 255), 1.0f);
+      ImGui::GetWindowDrawList()->AddLine(ImVec2(center.x + 4, center.y - 4),
+                                          ImVec2(center.x - 4, center.y + 4),
+                                          IM_COL32(200, 200, 200, 255), 1.0f);
+    }
+    ImGui::PopStyleColor(2);
+
+    ImGui::PopStyleColor(); // Button Transparent
+    ImGui::PopStyleVar(2);
+
+    // Decorative Line under Title Bar
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(viewport->Pos.x, viewport->Pos.y + titleBarHeight),
+        ImVec2(viewport->Pos.x + viewport->Size.x,
+               viewport->Pos.y + titleBarHeight),
+        IM_COL32(0, 122, 204, 255), // Cyan/Blue ImHex-like accent
+        2.0f);                      // Thicker line
+  }
+  ImGui::End();
+
+  ImGui::PopStyleColor(); // WindowBg
+  ImGui::PopStyleVar(2);
+}
+
+void ImageViewerUI::OpenFileDialog() {
+  OPENFILENAMEA ofn = {};
+  char filename[MAX_PATH] = {};
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = NULL;
+  ofn.lpstrFilter =
+      "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.hdr;*.dds\0All "
+      "Files\0*.*\0\0";
+  ofn.lpstrFile = filename;
+  ofn.nMaxFile = MAX_PATH;
+  ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+  if (GetOpenFileNameA(&ofn)) {
+    // Clear existing texture before loading new one
+    if (m_imageRenderer.HasTexture()) {
+      m_imageRenderer.ClearTexture();
+    }
+
+    if (m_imageViewer.LoadImage(filename)) {
+      UpdateHistogram();
+      m_renderer->BeginRender();
+      m_imageRenderer.UploadImage(m_renderer->GetDevice(),
+                                  m_renderer->GetCommandList(),
+                                  m_imageViewer.GetImageData());
+      m_renderer->EndRender();
+    }
+  }
+}
+
+void ImageViewerUI::PasteFromClipboard() {
+  // Clear existing texture before loading new one
+  if (m_imageRenderer.HasTexture()) {
+    m_imageRenderer.ClearTexture();
+  }
+
+  if (m_imageViewer.LoadImageFromClipboard()) {
+    UpdateHistogram();
+
+    // Upload the new image to GPU
+    m_renderer->BeginRender();
+    m_imageRenderer.UploadImage(m_renderer->GetDevice(),
+                                m_renderer->GetCommandList(),
+                                m_imageViewer.GetImageData());
+    m_renderer->EndRender();
+  }
+}
+
+void ImageViewerUI::HandleGlobalShortcuts() {
+  // Check for Ctrl+O
+  if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+    OpenFileDialog();
+  }
+
+  // Check for Ctrl+V
+  if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+    PasteFromClipboard();
+  }
+}
