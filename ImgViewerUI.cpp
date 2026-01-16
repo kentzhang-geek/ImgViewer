@@ -947,7 +947,7 @@ void ImgViewerUI::RenderTitleBar() {
     ImGui::TextColored(ImVec4(0.4f, 0.6f, 1.0f, 1.0f),
                        "IMG"); // Placeholder icon
     ImGui::SameLine();
-    ImGui::Text("ImageViewer");
+    ImGui::Text("ImgViewer");
 
     if (ImGui::GetIO().Fonts->Fonts.Size > 1) {
       ImGui::PopFont();
@@ -967,7 +967,7 @@ void ImgViewerUI::RenderTitleBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         ImVec2(0, 0)); // Remove padding to allow full centering
 
-    if (ImGui::Button("File", ImVec2(45, 32))) {
+    if (ImGui::Button("File", ImVec2(55, 32))) {
       ImGui::OpenPopup("FileMenu");
     }
 

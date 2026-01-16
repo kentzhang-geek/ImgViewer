@@ -379,7 +379,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
       // 1. Menu Area (Left side): Icon + "File" menu.
       float interactWidth =
           g_pViewerUI ? g_pViewerUI->GetTitleBarInteractWidth() : 400.0f;
-      if (pt.x < interactWidth)
+      if ((pt.x < interactWidth) && (pt.x > (interactWidth - 55)))
         return HTCLIENT;
 
       // 2. Window Controls (Right side): 3 Buttons * 46px = 138px.
