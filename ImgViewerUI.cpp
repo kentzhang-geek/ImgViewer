@@ -532,9 +532,8 @@ void ImgViewerUI::HandleImageInteraction() {
       m_hoveredPixel = {-1, -1};
     }
 
-    // Right-click for magnifier
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-        m_hoveredPixel.x >= 0) {
+    // Right-click drag for magnifier
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Right) && m_hoveredPixel.x >= 0) {
       m_showMagnifier = true;
       m_magnifierPos = m_hoveredPixel;
     }
