@@ -6,10 +6,10 @@ set(BINARY_NAME "imgViewer")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---- 源码根目录（新增这一层）----
+# ---- Source Root ----
 set(SRC_ROOT "${CMAKE_SOURCE_DIR}")
 
-# ---- 第三方路径 ----
+# ---- Third-party Paths ----
 set(SDK_ROOT         "../SDKs")
 
 set(IMGUI_SOURCE
@@ -22,7 +22,7 @@ set(IMGUI_SOURCE
 	${SDK_ROOT}/imgui-docking/backends/imgui_impl_win32.cpp
 )
 
-# ---- 源文件 ----
+# ---- Source Files ----
 set(PROJECT_SOURCES
 	${SRC_ROOT}/pch.cpp
 	${SRC_ROOT}/main.cpp
@@ -41,7 +41,7 @@ add_executable(${PROJECT_NAME} WIN32 ${PROJECT_SOURCES} ${IMGUI_SOURCE})
 # ---- PCH ----
 target_precompile_headers(${PROJECT_NAME} PRIVATE ${SRC_ROOT}/pch.h)
 
-# ---- 宏 ----
+# ---- Macros ----
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	_WINDOWS
 	UNICODE
@@ -51,7 +51,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 	_CRT_SECURE_NO_WARNINGS
 )
 
-# ---- include ----
+# ---- Include Directories ----
 target_include_directories(${PROJECT_NAME} PRIVATE
 	"../scene_flat/generated/cpp"
 	${SRC_ROOT}
@@ -63,16 +63,18 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/stb"
 	"../SDKs/dxtex/include"
 	"../SDKs/DirectXTex-oct2025/Common"
+	"../SDKs/libjpeg/include"
 )
 
-# ---- lib dirs ----
+# ---- Library Directories ----
 target_link_directories(${PROJECT_NAME} PRIVATE
 	"../SDKs/boost/lib"
 	"../SDKs/flatbuffers/lib"
 	"../SDKs/dxtex/lib"
+	"../SDKs/libjpeg/lib"
 )
 
-# ---- link ----
+# ---- Link Libraries ----
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	DirectXTex.lib
 	dxcompiler.lib
@@ -81,11 +83,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	dxguid.lib
 	D3d12.lib
 	dwmapi.lib
+	jpeg-static.lib
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE /W3 /permissive-)
 
-# ---- output ----
+# ---- Output Settings ----
 set_target_properties(${PROJECT_NAME} PROPERTIES
 	OUTPUT_NAME ${BINARY_NAME}
 )

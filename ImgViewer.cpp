@@ -6,7 +6,12 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#include "Logger.h"
 #include <DirectXTex.h>
+#include <filesystem>
+#include <jpeglib.h>
+#include <setjmp.h>
+#include <stdio.h>
 
 ImgViewer::ImgViewer() {}
 
@@ -22,6 +27,8 @@ bool ImgViewer::LoadImage(const std::string &filepath) {
   bool success = false;
   if (ext == "dds") {
     success = LoadDDS(filepath);
+  } else if (ext == "jpg" || ext == "jpeg") {
+    success = LoadJpeg(filepath);
   } else {
     success = LoadSTB(filepath);
   }
@@ -321,4 +328,102 @@ void ImgViewer::Clear() {
   m_imageData = ImageData();
   m_zoom = 1.0f;
   m_pan = {0.0f, 0.0f};
+}
+struct my_error_mgr {
+  struct jpeg_error_mgr pub;
+  jmp_buf setjmp_buffer;
+};
+
+typedef struct my_error_mgr *my_error_ptr;
+
+static void my_error_exit(j_common_ptr cinfo) {
+  my_error_ptr myerr = (my_error_ptr)cinfo->err;
+  // Let the memory manager delete any temp files before we die
+  (*cinfo->err->output_message)(cinfo);
+  longjmp(myerr->setjmp_buffer, 1);
+}
+
+bool ImgViewer::LoadJpeg(const std::string &filepath) {
+  LOG("Loading JPEG: %s", filepath.c_str());
+  FILE *infile;
+
+  // Use _wfopen handles Unicode paths correctly on Windows
+  std::wstring wpath = std::filesystem::path(filepath).wstring();
+  if ((infile = _wfopen(wpath.c_str(), L"rb")) == NULL) {
+    LOG_ERROR("Failed to open JPEG file: %s", filepath.c_str());
+    return false;
+  }
+
+  struct jpeg_decompress_struct cinfo;
+  struct my_error_mgr jerr;
+
+  // We set up the normal JPEG error routines, then override error_exit.
+  cinfo.err = jpeg_std_error(&jerr.pub);
+  jerr.pub.error_exit = my_error_exit;
+
+  // Establish the setjmp return context for my_error_exit to use.
+  if (setjmp(jerr.setjmp_buffer)) {
+    // If we get here, the JPEG code has signaled an error.
+    // We need to clean up the JPEG object, close the input file, and return.
+    LOG_ERROR("JPEG error occurred while loading: %s", filepath.c_str());
+    jpeg_destroy_decompress(&cinfo);
+    fclose(infile);
+    return false;
+  }
+
+  jpeg_create_decompress(&cinfo);
+  jpeg_stdio_src(&cinfo, infile);
+
+  if (jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK) {
+    LOG_ERROR("JPEG header invalid or not found: %s", filepath.c_str());
+    jpeg_destroy_decompress(&cinfo);
+    fclose(infile);
+    return false;
+  }
+
+  jpeg_start_decompress(&cinfo);
+
+  m_imageData.width = cinfo.output_width;
+  m_imageData.height = cinfo.output_height;
+  m_imageData.channels = 4; // We convert to RGBA
+  m_imageData.format = "JPEG";
+  m_imageData.pixelFormat = "RGBA8";
+
+  size_t pixelCount = m_imageData.width * m_imageData.height * 4;
+  m_imageData.pixels.resize(pixelCount);
+
+  int row_stride = cinfo.output_width * cinfo.output_components;
+  JSAMPARRAY buffer = (*cinfo.mem->alloc_sarray)((j_common_ptr)&cinfo,
+                                                 JPOOL_IMAGE, row_stride, 1);
+
+  while (cinfo.output_scanline < cinfo.output_height) {
+    jpeg_read_scanlines(&cinfo, buffer, 1);
+
+    // Convert to float RGBA
+    int y = cinfo.output_scanline - 1;
+    for (int x = 0; x < m_imageData.width; x++) {
+      int dstIdx = (y * m_imageData.width + x) * 4;
+      int srcIdx = x * cinfo.output_components;
+
+      if (cinfo.output_components == 3) {
+        m_imageData.pixels[dstIdx + 0] = buffer[0][srcIdx + 0] / 255.0f; // R
+        m_imageData.pixels[dstIdx + 1] = buffer[0][srcIdx + 1] / 255.0f; // G
+        m_imageData.pixels[dstIdx + 2] = buffer[0][srcIdx + 2] / 255.0f; // B
+        m_imageData.pixels[dstIdx + 3] = 1.0f;                           // A
+      } else if (cinfo.output_components == 1) {
+        float val = buffer[0][srcIdx] / 255.0f;
+        m_imageData.pixels[dstIdx + 0] = val;  // R
+        m_imageData.pixels[dstIdx + 1] = val;  // G
+        m_imageData.pixels[dstIdx + 2] = val;  // B
+        m_imageData.pixels[dstIdx + 3] = 1.0f; // A
+      }
+    }
+  }
+
+  jpeg_finish_decompress(&cinfo);
+  jpeg_destroy_decompress(&cinfo);
+  fclose(infile);
+
+  LOG("JPEG loaded successfully: %dx%d", m_imageData.width, m_imageData.height);
+  return true;
 }

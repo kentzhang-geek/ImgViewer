@@ -103,6 +103,11 @@ private:
   bool LoadDDS(const std::string &filepath);
 
   /**
+   * @brief Loads image using libjpeg-turbo (JPG/JPEG).
+   */
+  bool LoadJpeg(const std::string &filepath);
+
+  /**
    * @brief Analyzes image pixels to find min/max values and NaNs.
    */
   void AnalyzeImageRange();
