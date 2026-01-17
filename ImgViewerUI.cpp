@@ -559,13 +559,20 @@ void ImgViewerUI::RenderRangeControls() {
 
   if (ImGui::Button("Auto Range")) {
     const auto &imgData = m_imgViewer.GetImageData();
+    float targetMin = 0.0f;
+    float targetMax = 1.0f;
+    bool apply = false;
 
     // If all channels are selected, use the pre-calculated global min/max
     if (m_showR && m_showG && m_showB) {
-      m_imgViewer.SetRange(imgData.minValue, imgData.maxValue);
+      targetMin = imgData.minValue;
+      targetMax = imgData.maxValue;
+      apply = true;
     } else if (!m_showR && !m_showG && !m_showB) {
       // No channels selected, do nothing or reset to 0-1
-      m_imgViewer.SetRange(0.0f, 1.0f);
+      targetMin = 0.0f;
+      targetMax = 1.0f;
+      apply = true;
     } else {
       // Calculate min/max for selected channels
       float minVal = FLT_MAX;
@@ -600,14 +607,24 @@ void ImgViewerUI::RenderRangeControls() {
       }
 
       if (minVal <= maxVal) {
-        m_imgViewer.SetRange(minVal, maxVal);
+        targetMin = minVal;
+        targetMax = maxVal;
+        apply = true;
       }
+    }
+
+    if (apply) {
+      m_imgViewer.SetRange(targetMin, targetMax);
+      m_plotViewMin = targetMin;
+      m_plotViewMax = targetMax;
     }
   }
 
   ImGui::SameLine();
   if (ImGui::Button("0-1 Range")) {
     m_imgViewer.SetRange(0.0f, 1.0f);
+    m_plotViewMin = 0.0f;
+    m_plotViewMax = 1.0f;
   }
 
   ImGui::Separator();
