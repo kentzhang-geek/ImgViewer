@@ -108,11 +108,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
   // Load input file if present
   if (!inputFilePath.empty()) {
-    char narrowFilename[MAX_PATH];
-    size_t convertedChars = 0;
-    wcstombs_s(&convertedChars, narrowFilename, MAX_PATH, inputFilePath.c_str(),
-               _TRUNCATE);
-    g_pViewerUI->HandleDragDrop(std::string(narrowFilename));
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, inputFilePath.c_str(), -1,
+                                          NULL, 0, NULL, NULL);
+    std::string utf8Filename(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, inputFilePath.c_str(), -1, &utf8Filename[0],
+                        size_needed, NULL, NULL);
+    utf8Filename.resize(size_needed - 1);
+    g_pViewerUI->HandleDragDrop(utf8Filename);
   }
 
   MSG msg = {};
@@ -456,12 +458,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     if (fileCount > 0 && g_pViewerUI) {
       WCHAR filename[MAX_PATH];
       if (DragQueryFileW(hDrop, 0, filename, MAX_PATH)) {
-        // Convert wide string to narrow string
-        char narrowFilename[MAX_PATH];
-        size_t convertedChars = 0;
-        wcstombs_s(&convertedChars, narrowFilename, MAX_PATH, filename,
-                   _TRUNCATE);
-        g_pViewerUI->HandleDragDrop(std::string(narrowFilename));
+        // Convert wide string to UTF-8 string
+        int size_needed =
+            WideCharToMultiByte(CP_UTF8, 0, filename, -1, NULL, 0, NULL, NULL);
+        std::string utf8Filename(size_needed, 0);
+        WideCharToMultiByte(CP_UTF8, 0, filename, -1, &utf8Filename[0],
+                            size_needed, NULL, NULL);
+        utf8Filename.resize(size_needed - 1);
+        g_pViewerUI->HandleDragDrop(utf8Filename);
       }
     }
     DragFinish(hDrop);

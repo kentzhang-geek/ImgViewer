@@ -3,15 +3,30 @@
 #include <algorithm>
 #include <cmath>
 
+#define STBI_WINDOWS_UTF8
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #include "Logger.h"
 #include <DirectXTex.h>
+#include <Windows.h> // Required for MultiByteToWideChar
 #include <filesystem>
 #include <jpeglib.h>
 #include <setjmp.h>
 #include <stdio.h>
+
+
+// Helper to convert UTF-8 std::string to std::wstring
+static std::wstring Utf8ToWide(const std::string &str) {
+  if (str.empty())
+    return std::wstring();
+  int size_needed =
+      MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+  std::wstring wstrTo(size_needed, 0);
+  MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0],
+                      size_needed);
+  return wstrTo;
+}
 
 ImgViewer::ImgViewer() {}
 
@@ -49,6 +64,7 @@ bool ImgViewer::LoadSTB(const std::string &filepath) {
   int width, height, channels;
 
   // First try to load as HDR
+  // stbi_is_hdr handles UTF-8 on Windows if STBI_WINDOWS_UTF8 is defined
   if (stbi_is_hdr(filepath.c_str())) {
     float *data = stbi_loadf(filepath.c_str(), &width, &height, &channels, 4);
     if (!data)
@@ -99,7 +115,7 @@ bool ImgViewer::LoadSTB(const std::string &filepath) {
 bool ImgViewer::LoadDDS(const std::string &filepath) {
   using namespace DirectX;
 
-  std::wstring wfilepath(filepath.begin(), filepath.end());
+  std::wstring wfilepath = Utf8ToWide(filepath);
 
   TexMetadata metadata;
   ScratchImage image;
@@ -348,7 +364,7 @@ bool ImgViewer::LoadJpeg(const std::string &filepath) {
   FILE *infile;
 
   // Use _wfopen handles Unicode paths correctly on Windows
-  std::wstring wpath = std::filesystem::path(filepath).wstring();
+  std::wstring wpath = Utf8ToWide(filepath);
   if ((infile = _wfopen(wpath.c_str(), L"rb")) == NULL) {
     LOG_ERROR("Failed to open JPEG file: %s", filepath.c_str());
     return false;
