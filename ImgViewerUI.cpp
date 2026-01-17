@@ -766,15 +766,20 @@ void ImgViewerUI::RenderHistogram() {
                       IM_COL32(255, 255, 0, 200), 2.0f);
 
     // Handle Triangles
-    float triSize = 8.0f;
-    // Min Handle (Points Down) - Actually let's put it at TOP
-    ImVec2 tMin1(sMin, p.y);
-    ImVec2 tMin2(sMin - triSize, p.y + triSize);
-    ImVec2 tMin3(sMin + triSize, p.y + triSize);
+    float triHeight = 12.0f;
+    float triWidth = 9.0f;
 
+    // Min Handle (Right-Pointing Triangle >)
+    // Vertical back aligned with sMin line
+    ImVec2 tMin1(sMin, p.y);
+    ImVec2 tMin2(sMin, p.y + triHeight);
+    ImVec2 tMin3(sMin + triWidth, p.y + triHeight * 0.5f);
+
+    // Max Handle (Left-Pointing Triangle <)
+    // Vertical back aligned with sMax line
     ImVec2 tMax1(sMax, p.y);
-    ImVec2 tMax2(sMax - triSize, p.y + triSize);
-    ImVec2 tMax3(sMax + triSize, p.y + triSize);
+    ImVec2 tMax2(sMax, p.y + triHeight);
+    ImVec2 tMax3(sMax - triWidth, p.y + triHeight * 0.5f);
 
     // Hit Testing
     // Only drag if mouse is in the area (roughly)
