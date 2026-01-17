@@ -677,10 +677,18 @@ void ImgViewerUI::RenderHistogram() {
     }
 
     // Pan (Middle Mouse Drag)
-    if (isActive && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-      float dx = io.MouseDelta.x / size.x * viewRange;
-      m_plotViewMin -= dx;
-      m_plotViewMax -= dx;
+    if (isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+      m_isPanningPlot = true;
+    }
+
+    if (m_isPanningPlot) {
+      if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+        float dx = io.MouseDelta.x / size.x * viewRange;
+        m_plotViewMin -= dx;
+        m_plotViewMax -= dx;
+      } else {
+        m_isPanningPlot = false;
+      }
     }
 
     // Helpers
