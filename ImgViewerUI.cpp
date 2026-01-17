@@ -870,6 +870,7 @@ void ImgViewerUI::HandleDragDrop(const std::string &filepath) {
 
   // Clear existing texture before loading new one
   if (m_imageRenderer.HasTexture()) {
+    m_renderer->WaitForGpu();
     m_imageRenderer.ClearTexture();
   }
 
@@ -1188,6 +1189,7 @@ void ImgViewerUI::OpenFileDialog() {
   if (GetOpenFileNameA(&ofn)) {
     // Clear existing texture before loading new one
     if (m_imageRenderer.HasTexture()) {
+      m_renderer->WaitForGpu();
       m_imageRenderer.ClearTexture();
     }
 
@@ -1205,6 +1207,7 @@ void ImgViewerUI::OpenFileDialog() {
 void ImgViewerUI::PasteFromClipboard() {
   // Clear existing texture before loading new one
   if (m_imageRenderer.HasTexture()) {
+    m_renderer->WaitForGpu();
     m_imageRenderer.ClearTexture();
   }
 
