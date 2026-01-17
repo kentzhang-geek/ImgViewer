@@ -178,9 +178,7 @@ void ImgViewerUI::RenderInfoPanel() {
   ImGui::Separator();
   ImGui::Text("View Controls:");
   float zoom = m_imgViewer.GetZoom();
-  if (ImGui::SliderFloat("Zoom", &zoom, 0.1f, 10.0f)) {
-    m_imgViewer.SetZoom(zoom);
-  }
+  ImGui::Text("Zoom: %.2f", zoom);
 
   if (ImGui::Button("Reset View")) {
     m_imgViewer.SetZoom(1.0f);
@@ -626,8 +624,6 @@ void ImgViewerUI::RenderRangeControls() {
   ImGui::SameLine();
   if (ImGui::Button("0-1 Range")) {
     m_imgViewer.SetRange(0.0f, 1.0f);
-    m_plotViewMin = 0.0f;
-    m_plotViewMax = 1.0f;
   }
 
   ImGui::Separator();
@@ -697,18 +693,10 @@ void ImgViewerUI::RenderHistogram() {
     }
 
     // Pan (Middle Mouse Drag)
-    if (isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
-      m_isPanningPlot = true;
-    }
-
-    if (m_isPanningPlot) {
-      if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
-        float dx = io.MouseDelta.x / size.x * viewRange;
-        m_plotViewMin -= dx;
-        m_plotViewMax -= dx;
-      } else {
-        m_isPanningPlot = false;
-      }
+    if (isActive && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+      float dx = io.MouseDelta.x / size.x * viewRange;
+      m_plotViewMin -= dx;
+      m_plotViewMax -= dx;
     }
 
     // Helpers
@@ -739,131 +727,46 @@ void ImgViewerUI::RenderHistogram() {
     }
 
     // -- Draw Histograms --
-    // Dynamic Histogram Calculation
-    // We compute the histogram from the source image pixels directly into the
-    // screen bins. This ensures perfect resolution at any zoom level.
+    float histRun = m_histMax - m_histMin;
+    if (histRun <= 0)
+      histRun = 1.0f;
 
-    int screenWidth = (int)size.x;
-    if (screenWidth <= 0)
-      screenWidth = 1;
-
-    // Allocate bins corresponding to screen pixels
-    std::vector<float> screenHistR(screenWidth, 0.0f);
-    std::vector<float> screenHistG(screenWidth, 0.0f);
-    std::vector<float> screenHistB(screenWidth, 0.0f);
-
-    viewRange = m_plotViewMax - m_plotViewMin;
-    if (viewRange <= 0.000001f)
-      viewRange = 0.000001f;
-
-    // const auto &imgData = m_imgViewer.GetImageData(); // Already declared
-    // above
-    int numPixels = imgData.width * imgData.height;
-
-    // Determine which channels to compute
-    bool doR = m_showR;
-    bool doG = m_showG;
-    bool doB = m_showB;
-
-    // Iterate all pixels and bucket them
-    // This is O(N) per frame, where N is roughly 2-8 million. This should take
-    // 5-20ms. Optimization: Multithreading could be added if needed, but simple
-    // loop is robust.
-
-    // Pre-calculate scaling factors to avoid division in loop
-    float scale = (float)screenWidth / viewRange;
-    float offset = -m_plotViewMin * scale;
-
-    // Use raw pointers for speed
-    const float *pPixels = imgData.pixels.data();
-
-    // Check bounds safety.
-    // pixels vector size is numPixels * 4 (if RGBA) or * channels.
-    // Assuming 4 channels based on previous code usage
-    int stride = 4;
-
-    if (imgData.pixels.size() >= numPixels * stride) {
-      for (int i = 0; i < numPixels; ++i) {
-        int idx = i * stride;
-
-        // Lambda for processing a channel
-        auto processChannel = [&](float val, std::vector<float> &hist) {
-          if (std::isnan(val))
-            return;
-
-          // Map value to bin index: floor((val - min) / range * width)
-          // = floor(val * scale + offset)
-          // We use a slightly more robust check because float precision
-
-          if (val < m_plotViewMin || val >= m_plotViewMax)
-            return;
-
-          int bin = (int)(val * scale + offset);
-
-          // Clamp bin to [0, screenWidth-1] just in case
-          if (bin >= 0 && bin < screenWidth) {
-            hist[bin] += 1.0f;
-          }
-        };
-
-        if (doR)
-          processChannel(pPixels[idx + 0], screenHistR);
-        if (doG)
-          processChannel(pPixels[idx + 1], screenHistG);
-        if (doB)
-          processChannel(pPixels[idx + 2], screenHistB);
-      }
+    // Find Global Max (for Y scaling)
+    float maxCount = 1.0f;
+    for (int i = 0; i < m_histogramBins; i++) {
+      float maxVal = (float)std::max(
+          m_histogramR[i], std::max(m_histogramG[i], m_histogramB[i]));
+      if (maxVal > 0)
+        maxCount = std::max(maxCount, std::log(maxVal + 1.0f));
     }
 
-    // Find Global Max for Scaling (Log Scale)
-    float globalViewMax = 1.0f;
-    auto findMax = [&](const std::vector<float> &hist) {
-      for (float v : hist) {
-        if (v > 0) {
-          float logV = std::log(v + 1.0f);
-          if (logV > globalViewMax)
-            globalViewMax = logV;
-        }
-      }
-    };
-    if (doR)
-      findMax(screenHistR);
-    if (doG)
-      findMax(screenHistG);
-    if (doB)
-      findMax(screenHistB);
-
     // Draw Curve
-    auto drawCurve = [&](const std::vector<float> &viewHist, ImU32 color) {
-      if (viewHist.empty())
+    auto drawCurve = [&](const std::vector<int> &hist, ImU32 color) {
+      if (hist.empty())
         return;
       std::vector<ImVec2> points;
-      points.reserve(screenWidth);
+      // Sampling all bins for simplicity
+      for (int i = 0; i < m_histogramBins; i++) {
+        float binVal = m_histMin + (float)i / (m_histogramBins - 1) * histRun;
 
-      for (int i = 0; i < screenWidth; i++) {
-        float count = viewHist[i];
-        // Apply log scale for display
+        // Clip roughly? RenderAll is fine for 2048 points
+        float sx = ValToScreenX(binVal);
+        float count = (float)hist[i];
         float valY = (count > 0) ? std::log(count + 1.0f) : 0.0f;
+        float sy = p.y + size.y - (valY / maxCount) * size.y;
 
-        float x = p.x + i;
-        // Invert Y because screen Y goes down
-        float y = p.y + size.y - (valY / globalViewMax) * size.y;
-
-        points.push_back(ImVec2(x, y));
+        points.push_back(ImVec2(sx, sy));
       }
-
-      // Optimization: reducing points if identical Y?
-      // For now, drawing all points is fine for modern GPU ImGui backend.
       drawList->AddPolyline(points.data(), (int)points.size(), color,
                             ImDrawFlags_None, 1.5f);
     };
 
-    if (doB)
-      drawCurve(screenHistB, IM_COL32(122, 162, 247, 255));
-    if (doG)
-      drawCurve(screenHistG, IM_COL32(158, 206, 106, 255));
-    if (doR)
-      drawCurve(screenHistR, IM_COL32(247, 118, 142, 255));
+    if (m_showB)
+      drawCurve(m_histogramB, IM_COL32(122, 162, 247, 255)); // #7aa2f7
+    if (m_showG)
+      drawCurve(m_histogramG, IM_COL32(158, 206, 106, 255)); // #9ece6a
+    if (m_showR)
+      drawCurve(m_histogramR, IM_COL32(247, 118, 142, 255)); // #f7768e
 
     // -- Selection Handles --
     float currentRangeMin = m_imgViewer.GetRangeMin();
