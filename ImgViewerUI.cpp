@@ -548,9 +548,12 @@ void ImgViewerUI::RenderRangeControls() {
 
   ImGui::Text("Plot Value Range");
 
+  ImGui::PushItemWidth(100.0f);
   bool changed = false;
   changed |= ImGui::DragFloat("Min", &rangeMin, 0.01f);
+  ImGui::SameLine();
   changed |= ImGui::DragFloat("Max", &rangeMax, 0.01f);
+  ImGui::PopItemWidth();
 
   if (changed) {
     m_imgViewer.SetRange(rangeMin, rangeMax);
