@@ -6,9 +6,13 @@
 #include "framework.h"
 #include "imgui.h"
 #include "pch.h"
+#include <boost/program_options.hpp>
 #include <dwmapi.h>
+#include <iostream>
 #include <shellapi.h>
 #include <string>
+
+namespace po = boost::program_options;
 
 #pragma comment(lib, "dwmapi.lib")
 
@@ -40,8 +44,55 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   UNREFERENCED_PARAMETER(hPrevInstance);
   UNREFERENCED_PARAMETER(lpCmdLine);
 
+  // Parse command line arguments
+  int argc;
+  LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+  bool verbose = false;
+  std::wstring inputFilePath;
+
+  try {
+    po::options_description desc("Allowed options");
+    desc.add_options()("help,h", "produce help message")(
+        "verbose,v", "enable verbose logging")(
+        "input-file", po::wvalue<std::wstring>(&inputFilePath),
+        "input file to open");
+
+    po::positional_options_description p;
+    p.add("input-file", -1);
+
+    po::variables_map vm;
+    po::store(
+        po::wcommand_line_parser(argc, argv).options(desc).positional(p).run(),
+        vm);
+    po::notify(vm);
+
+    if (vm.count("help")) {
+      AllocConsole();
+      freopen("CONOUT$", "w", stdout);
+      std::cout << desc << "\n";
+      MessageBoxW(nullptr, L"Check console for help output. Press OK to exit.",
+                  L"Help", MB_OK);
+      return 0;
+    }
+
+    if (vm.count("verbose")) {
+      verbose = true;
+    }
+
+  } catch (const std::exception &e) {
+    std::string what = e.what();
+    std::wstring whatW(what.begin(), what.end());
+    MessageBoxW(nullptr, whatW.c_str(), L"Error parsing command line arguments",
+                MB_OK | MB_ICONERROR);
+    return 1;
+  }
+  LocalFree(argv);
+
   // Initialize logger
-  Logger::Get().Init("log.txt");
+  if (verbose) {
+    Logger::Get().Init("log.txt");
+  }
   LOG("=== ImgViewer Starting ===");
 
   // Enable DPI awareness for proper mouse coordinates with Windows scaling
@@ -53,6 +104,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   if (!InitInstance(hInstance, nCmdShow)) {
     LOG_ERROR("InitInstance failed!");
     return FALSE;
+  }
+
+  // Load input file if present
+  if (!inputFilePath.empty()) {
+    char narrowFilename[MAX_PATH];
+    size_t convertedChars = 0;
+    wcstombs_s(&convertedChars, narrowFilename, MAX_PATH, inputFilePath.c_str(),
+               _TRUNCATE);
+    g_pViewerUI->HandleDragDrop(std::string(narrowFilename));
   }
 
   MSG msg = {};
