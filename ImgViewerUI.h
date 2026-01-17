@@ -87,7 +87,17 @@ private:
   std::vector<int> m_histogramR;
   std::vector<int> m_histogramG;
   std::vector<int> m_histogramB;
-  int m_histogramBins = 256;
+  int m_histogramBins = 2048;
+
+  // Plot View State
+  float m_plotViewMin = 0.0f;
+  float m_plotViewMax = 1.0f;
+  bool m_isDraggingPlotMin = false;
+  bool m_isDraggingPlotMax = false;
+  bool m_isPanningPlot = false;
+  float m_lastPlotMouseX = 0.0f;
+  float m_histMin = 0.0f;
+  float m_histMax = 1.0f;
 
   void RenderMainPanel();
   void RenderInfoPanel();

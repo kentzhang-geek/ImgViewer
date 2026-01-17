@@ -603,14 +603,11 @@ void ImgViewerUI::RenderRangeControls() {
         m_imgViewer.SetRange(minVal, maxVal);
       }
     }
-
-    UpdateHistogram(); // Update histogram when range changes
   }
 
   ImGui::SameLine();
   if (ImGui::Button("0-1 Range")) {
     m_imgViewer.SetRange(0.0f, 1.0f);
-    UpdateHistogram(); // Update histogram when range changes
   }
 
   ImGui::Separator();
@@ -623,6 +620,8 @@ void ImgViewerUI::RenderRangeControls() {
 }
 
 void ImgViewerUI::RenderHistogram() {
+  const auto &imgData = m_imgViewer.GetImageData();
+
   // Legend
   ImGui::TextColored(ImVec4(0.97f, 0.46f, 0.56f, 1.0f), "R"); // #f7768e
   ImGui::SameLine();
@@ -636,15 +635,6 @@ void ImgViewerUI::RenderHistogram() {
     return;
   }
 
-  // Find max count for scaling (use log scale for better visualization)
-  float maxCount = 1.0f;
-  for (int i = 0; i < m_histogramBins; i++) {
-    float maxVal = (float)std::max(m_histogramR[i],
-                                   std::max(m_histogramG[i], m_histogramB[i]));
-    if (maxVal > 0)
-      maxCount = std::max(maxCount, std::log(maxVal + 1.0f));
-  }
-
   // Calculate size for the plot area - use remaining space
   ImVec2 availSize = ImGui::GetContentRegionAvail();
   if (availSize.x < 10 || availSize.y < 10)
@@ -652,17 +642,11 @@ void ImgViewerUI::RenderHistogram() {
 
   // Use BeginChild to create isolated coordinate space for the plot
   ImGui::BeginChild("##HistogramPlot", availSize, ImGuiChildFlags_None,
-                    ImGuiWindowFlags_NoScrollbar);
+                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
   {
     ImVec2 size = ImGui::GetContentRegionAvail();
     ImVec2 p = ImGui::GetCursorScreenPos();
-
-    // Reserve the space with an InvisibleButton to properly capture input
-    // This prevents mouse events from "falling through" to widgets behind
-    ImGui::InvisibleButton("##HistogramArea", size);
-
-    // Draw the histogram using the saved position (p) which is where we want to
-    // draw
+    ImGuiIO &io = ImGui::GetIO();
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
     // Background
@@ -671,33 +655,180 @@ void ImgViewerUI::RenderHistogram() {
     drawList->AddRect(p, ImVec2(p.x + size.x, p.y + size.y),
                       IM_COL32(60, 60, 60, 255));
 
-    // Draw curve for each channel
+    ImGui::InvisibleButton("##PlotHitBox", size);
+    bool isHovered = ImGui::IsItemHovered();
+    bool isActive = ImGui::IsItemActive();
+
+    // -- Interaction Logic --
+    float viewRange = m_plotViewMax - m_plotViewMin;
+    if (viewRange < 0.00001f)
+      viewRange = 1.0f;
+
+    // Zoom (Mouse Wheel)
+    if (isHovered && io.MouseWheel != 0.0f) {
+      float zoomFactor = (io.MouseWheel > 0) ? 0.9f : 1.1f;
+      float mouseRelPos = (io.MousePos.x - p.x) / size.x;
+      float mouseVal = m_plotViewMin + mouseRelPos * viewRange;
+
+      float newRange = viewRange * zoomFactor;
+      m_plotViewMin = mouseVal - mouseRelPos * newRange;
+      m_plotViewMax = mouseVal + (1.0f - mouseRelPos) * newRange;
+      viewRange = m_plotViewMax - m_plotViewMin;
+    }
+
+    // Pan (Middle Mouse Drag)
+    if (isActive && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+      float dx = io.MouseDelta.x / size.x * viewRange;
+      m_plotViewMin -= dx;
+      m_plotViewMax -= dx;
+    }
+
+    // Helpers
+    auto ValToScreenX = [&](float val) -> float {
+      return p.x + ((val - m_plotViewMin) / viewRange) * size.x;
+    };
+
+    auto ScreenXToVal = [&](float sx) -> float {
+      return m_plotViewMin + ((sx - p.x) / size.x) * viewRange;
+    };
+
+    // -- Draw Grid & X Axis Labels --
+    int gridLines = 10;
+    for (int i = 0; i <= gridLines; i++) {
+      float t = (float)i / gridLines;
+      float val = m_plotViewMin + t * viewRange;
+      float sx = p.x + t * size.x;
+
+      // Vertical line
+      drawList->AddLine(ImVec2(sx, p.y), ImVec2(sx, p.y + size.y),
+                        IM_COL32(50, 50, 50, 100));
+
+      // Label
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%.2f", val);
+      drawList->AddText(ImVec2(sx + 4, p.y + size.y - 16),
+                        IM_COL32(150, 150, 150, 255), buf);
+    }
+
+    // -- Draw Histograms --
+    float histRun = m_histMax - m_histMin;
+    if (histRun <= 0)
+      histRun = 1.0f;
+
+    // Find Global Max (for Y scaling)
+    float maxCount = 1.0f;
+    for (int i = 0; i < m_histogramBins; i++) {
+      float maxVal = (float)std::max(
+          m_histogramR[i], std::max(m_histogramG[i], m_histogramB[i]));
+      if (maxVal > 0)
+        maxCount = std::max(maxCount, std::log(maxVal + 1.0f));
+    }
+
+    // Draw Curve
     auto drawCurve = [&](const std::vector<int> &hist, ImU32 color) {
       if (hist.empty())
         return;
       std::vector<ImVec2> points;
-      points.reserve(m_histogramBins);
-
+      // Sampling all bins for simplicity
       for (int i = 0; i < m_histogramBins; i++) {
-        float x = p.x + (i / (float)(m_histogramBins - 1)) * size.x;
-        float value = hist[i] > 0 ? std::log((float)hist[i] + 1.0f) : 0.0f;
-        float y = p.y + size.y - (value / maxCount) * size.y;
-        points.push_back(ImVec2(x, y));
-      }
+        float binVal = m_histMin + (float)i / (m_histogramBins - 1) * histRun;
 
-      if (points.size() >= 2) {
-        drawList->AddPolyline(points.data(), (int)points.size(), color,
-                              ImDrawFlags_None, 1.5f);
+        // Clip roughly? RenderAll is fine for 2048 points
+        float sx = ValToScreenX(binVal);
+        float count = (float)hist[i];
+        float valY = (count > 0) ? std::log(count + 1.0f) : 0.0f;
+        float sy = p.y + size.y - (valY / maxCount) * size.y;
+
+        points.push_back(ImVec2(sx, sy));
       }
+      drawList->AddPolyline(points.data(), (int)points.size(), color,
+                            ImDrawFlags_None, 1.5f);
     };
 
-    // Draw in order: B, G, R (so R is on top)
     if (m_showB)
       drawCurve(m_histogramB, IM_COL32(122, 162, 247, 255)); // #7aa2f7
     if (m_showG)
       drawCurve(m_histogramG, IM_COL32(158, 206, 106, 255)); // #9ece6a
     if (m_showR)
       drawCurve(m_histogramR, IM_COL32(247, 118, 142, 255)); // #f7768e
+
+    // -- Selection Handles --
+    float currentRangeMin = m_imgViewer.GetRangeMin();
+    float currentRangeMax = m_imgViewer.GetRangeMax();
+
+    float sMin = ValToScreenX(currentRangeMin);
+    float sMax = ValToScreenX(currentRangeMax);
+
+    // Draw Vertical Lines
+    drawList->AddLine(ImVec2(sMin, p.y), ImVec2(sMin, p.y + size.y),
+                      IM_COL32(255, 255, 0, 200), 2.0f);
+    drawList->AddLine(ImVec2(sMax, p.y), ImVec2(sMax, p.y + size.y),
+                      IM_COL32(255, 255, 0, 200), 2.0f);
+
+    // Handle Triangles
+    float triSize = 8.0f;
+    // Min Handle (Points Down) - Actually let's put it at TOP
+    ImVec2 tMin1(sMin, p.y);
+    ImVec2 tMin2(sMin - triSize, p.y + triSize);
+    ImVec2 tMin3(sMin + triSize, p.y + triSize);
+
+    ImVec2 tMax1(sMax, p.y);
+    ImVec2 tMax2(sMax - triSize, p.y + triSize);
+    ImVec2 tMax3(sMax + triSize, p.y + triSize);
+
+    // Hit Testing
+    // Only drag if mouse is in the area (roughly)
+    // We check absolute distance in screen X
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && isHovered) {
+      if (!m_isDraggingPlotMin && !m_isDraggingPlotMax) {
+        float distMin = std::abs(io.MousePos.x - sMin);
+        float distMax = std::abs(io.MousePos.x - sMax);
+        float threshold = 10.0f;
+
+        if (distMin < threshold && distMin < distMax)
+          m_isDraggingPlotMin = true;
+        else if (distMax < threshold)
+          m_isDraggingPlotMax = true;
+      }
+    } else {
+      m_isDraggingPlotMin = false;
+      m_isDraggingPlotMax = false;
+    }
+
+    // Apply Drag
+    if (m_isDraggingPlotMin) {
+      float val = ScreenXToVal(io.MousePos.x);
+      val = std::min(val, currentRangeMax); // Don't cross
+      m_imgViewer.SetRange(val, currentRangeMax);
+    } else if (m_isDraggingPlotMax) {
+      float val = ScreenXToVal(io.MousePos.x);
+      val = std::max(val, currentRangeMin); // Don't cross
+      m_imgViewer.SetRange(currentRangeMin, val);
+    }
+
+    // Draw Handles (Highlight if dragging)
+    drawList->AddTriangleFilled(tMin1, tMin2, tMin3,
+                                m_isDraggingPlotMin
+                                    ? IM_COL32(255, 255, 255, 255)
+                                    : IM_COL32(255, 255, 0, 255));
+    drawList->AddTriangleFilled(tMax1, tMax2, tMax3,
+                                m_isDraggingPlotMax
+                                    ? IM_COL32(255, 255, 255, 255)
+                                    : IM_COL32(255, 255, 0, 255));
+
+    // -- Crosshair --
+    // Only show if hovering and NOT dragging handles
+    if (isHovered && !m_isDraggingPlotMin && !m_isDraggingPlotMax) {
+      float mx = io.MousePos.x;
+      drawList->AddLine(ImVec2(mx, p.y), ImVec2(mx, p.y + size.y),
+                        IM_COL32(255, 255, 255, 128));
+
+      float val = ScreenXToVal(mx);
+      char valBuf[32];
+      snprintf(valBuf, sizeof(valBuf), "%.4f", val);
+      drawList->AddText(ImVec2(mx + 4, io.MousePos.y),
+                        IM_COL32(255, 255, 255, 255), valBuf);
+    }
   }
   ImGui::EndChild();
 }
@@ -829,20 +960,33 @@ void ImgViewerUI::UpdateHistogram() {
   if (!m_imgViewer.HasImage())
     return;
 
+  // Check if bins size matches (in case it was changed dynamically, though we
+  // use fixed 2048 now)
+  if (m_histogramR.size() != m_histogramBins) {
+    m_histogramR.resize(m_histogramBins);
+    m_histogramG.resize(m_histogramBins);
+    m_histogramB.resize(m_histogramBins);
+  }
+
   // Clear histograms
   std::fill(m_histogramR.begin(), m_histogramR.end(), 0);
   std::fill(m_histogramG.begin(), m_histogramG.end(), 0);
   std::fill(m_histogramB.begin(), m_histogramB.end(), 0);
 
-  float rangeMin = m_imgViewer.GetRangeMin();
-  float rangeMax = m_imgViewer.GetRangeMax();
+  // Use global image range
+  float rangeMin = imgData.minValue;
+  float rangeMax = imgData.maxValue;
+  if (rangeMax <= rangeMin)
+    rangeMax = rangeMin + 1.0f;
+
+  m_histMin = rangeMin;
+  m_histMax = rangeMax;
+
   float rangeSize = rangeMax - rangeMin;
 
-  if (rangeSize <= 0.0f)
-    return;
-
   // Build histograms
-  for (int i = 0; i < imgData.width * imgData.height; i++) {
+  int numPixels = imgData.width * imgData.height;
+  for (int i = 0; i < numPixels; i++) {
     int pixelIdx = i * 4;
 
     for (int ch = 0; ch < 3; ch++) {
@@ -882,6 +1026,10 @@ void ImgViewerUI::HandleDragDrop(const std::string &filepath) {
 
     UpdateHistogram();
     LOG("ImgViewerUI::HandleDragDrop - Histogram updated");
+
+    // Reset Plot View to full range
+    m_plotViewMin = m_histMin;
+    m_plotViewMax = m_histMax;
 
     // Upload image to GPU
     LOG("ImgViewerUI::HandleDragDrop - Starting GPU upload...");
@@ -1195,6 +1343,8 @@ void ImgViewerUI::OpenFileDialog() {
 
     if (m_imgViewer.LoadImage(filename)) {
       UpdateHistogram();
+      m_plotViewMin = m_histMin;
+      m_plotViewMax = m_histMax;
       m_renderer->BeginRender();
       m_imageRenderer.UploadImage(m_renderer->GetDevice(),
                                   m_renderer->GetCommandList(),
@@ -1213,6 +1363,8 @@ void ImgViewerUI::PasteFromClipboard() {
 
   if (m_imgViewer.LoadImageFromClipboard()) {
     UpdateHistogram();
+    m_plotViewMin = m_histMin;
+    m_plotViewMax = m_histMax;
 
     // Upload the new image to GPU
     m_renderer->BeginRender();
