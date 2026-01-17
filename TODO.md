@@ -1,3 +1,2 @@
-- [x] min/max in plot view should at a same line
 - [x] view zoom slider maybe not needed, use mouse wheel instead
 - check hdr, ktx, and other formats supported by renderdoc
