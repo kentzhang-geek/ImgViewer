@@ -1,5 +1,3 @@
-- command line arguments
-- log not output by default, unless -v or --verbose is specified
 - jpeg support
 - plot view zoom, crossline, bound selection
 - color them using tokyo night theme
