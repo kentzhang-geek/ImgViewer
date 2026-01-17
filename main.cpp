@@ -68,11 +68,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     po::notify(vm);
 
     if (vm.count("help")) {
-      AllocConsole();
-      freopen("CONOUT$", "w", stdout);
+      if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        freopen("CONOUT$", "w", stdout);
+        freopen("CONOUT$", "w", stderr);
+      }
       std::cout << desc << "\n";
-      MessageBoxW(nullptr, L"Check console for help output. Press OK to exit.",
-                  L"Help", MB_OK);
       return 0;
     }
 
